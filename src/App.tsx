@@ -1,13 +1,18 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { AutoResizeTextarea } from "./AutoResizeTextarea";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./components/ui/tooltip";
 import { Button } from "./components/ui/button";
 import { ArrowUpIcon, PaperclipIcon } from "lucide-react";
+import ollama from 'ollama'
 
 
 interface Message {
     role: string;
     content: string;
+}
+
+interface MessageProps {
+    message: Message;
 }
 
 interface MessagesListProps {
@@ -25,36 +30,68 @@ function Header() {
     );
 }
 
-function MessagesList({ messages }: MessagesListProps) {
+function Message({ message }: MessageProps) {
+    return (
+        <div
+            data-role={message.role}
+            className="max-w-[80%] rounded-xl px-3 py-2 text-sm whitespace-pre-line data-[role=assistant]:self-start data-[role=user]:self-end data-[role=assistant]:bg-gray-100 data-[role=user]:bg-blue-500 data-[role=assistant]:text-black data-[role=user]:text-white"
+        >
+            {message.content}
+        </div>
+    );
+}
+
+function Messages({ messages }: MessagesListProps) {
+    const bottomRef = useRef<HTMLInputElement | null>(null);
+
+    useEffect(() => {
+        if (bottomRef.current)
+            bottomRef.current.scrollIntoView({ behavior: "smooth" });
+    }, [messages]);
+
     return (
         <div className="my-4 flex h-fit min-h-full flex-col gap-4">
             {
                 messages.map((message, index) => (
-                    <div
-                        key={index}
-                        data-role={message.role}
-                        className="max-w-[80%] rounded-xl px-3 py-2 text-sm data-[role=assistant]:self-start data-[role=user]:self-end data-[role=assistant]:bg-gray-100 data-[role=user]:bg-blue-500 data-[role=assistant]:text-black data-[role=user]:text-white"
-                    >
-                        {message.content}
-                    </div>
+                    <Message key={index} message={message} />
                 ))
             }
+            <div ref={bottomRef}></div>
         </div>
     );
+}
+
+async function* useOllama(messages: Message[]): AsyncIterator<Message> {
+    console.log(messages);
+    const response = await ollama.chat({
+        model: "llama3.1",
+        messages: messages,
+        stream: true,
+    });
+    for await (const chunk of response) {
+        yield (chunk.message as Message);
+    }
 }
 
 function useChat() {
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState<string>("");
 
-    const append = (message: string) => {
-        const userMessage = { content: message, role: "user" };
-        const assistantMessage = { content: "I'm unavailable for the moment", role: "assistant" };
-        setMessages([
-            ...messages,
-            userMessage,
-            assistantMessage
-        ]);
+    const append = async (message: string) => {
+        const userMessage = { role: "user", content: message };
+        setMessages((prevMessages) => [...prevMessages, userMessage]);
+        setMessages((prevMessages) => [...prevMessages, { role: "assistant", content: "" }]);
+        for await (const chunk of useOllama([...messages, userMessage])) {
+            setMessages((prevMessages) => {
+                const newMessages = [...prevMessages];
+                const lastMessage = prevMessages[prevMessages.length - 1];
+                newMessages[newMessages.length - 1] = {
+                    ...lastMessage,
+                    content: lastMessage.content + chunk.content
+                }
+                return newMessages;
+            });
+        }
     };
 
     return { messages, input, setInput, append };
@@ -62,7 +99,7 @@ function useChat() {
 
 
 function App() {
-    const fileInputRef = useRef<HTMLInputElement>(null);
+    const fileInputRef = useRef<HTMLInputElement | null>(null);
     const { messages, input, setInput, append } = useChat();
 
     const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
@@ -86,7 +123,9 @@ function App() {
     return (
         <TooltipProvider>
             <main className="ring-none mx-auto flex h-svh max-h-svh w-full max-w-[35rem] flex-col items-stretch border-none">
-                <div className="flex-1 content-center overflow-y-auto px-6">{messages.length ? <MessagesList messages={messages} /> : <Header />}</div>
+                <div className="flex-1 content-center overflow-y-auto px-6">
+                    {messages.length ? <Messages messages={messages} /> : <Header />}
+                </div>
                 <form
                     onSubmit={handleSubmit}
                     className="border-input bg-background focus-within:ring-ring/10 relative mx-6 mb-6 flex flex-col items-center rounded-[16px] border px-3 py-1.5 pr-8 text-sm focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-0"
