@@ -42,7 +42,7 @@ function Message({ message }: MessageProps) {
 }
 
 function Messages({ messages }: MessagesListProps) {
-    const bottomRef = useRef<HTMLInputElement | null>(null);
+    const bottomRef = useRef<HTMLDivElement | null>(null);
 
     useEffect(() => {
         if (bottomRef.current)
@@ -61,7 +61,7 @@ function Messages({ messages }: MessagesListProps) {
     );
 }
 
-async function* useOllama(messages: Message[]): AsyncIterator<Message> {
+async function* useOllama(messages: Message[]): AsyncGenerator<Message, void, void> {
     console.log(messages);
     const response = await ollama.chat({
         model: "llama3.1",
@@ -76,31 +76,34 @@ async function* useOllama(messages: Message[]): AsyncIterator<Message> {
 function useChat() {
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState<string>("");
+    const [isStreaming, setStreaming] = useState<boolean>(false);
 
     const append = async (message: string) => {
+        if (isStreaming) return;
+        setStreaming(true);
         const userMessage = { role: "user", content: message };
         setMessages((prevMessages) => [...prevMessages, userMessage]);
         setMessages((prevMessages) => [...prevMessages, { role: "assistant", content: "" }]);
         for await (const chunk of useOllama([...messages, userMessage])) {
             setMessages((prevMessages) => {
                 const newMessages = [...prevMessages];
-                const lastMessage = prevMessages[prevMessages.length - 1];
                 newMessages[newMessages.length - 1] = {
-                    ...lastMessage,
-                    content: lastMessage.content + chunk.content
+                    ...prevMessages[prevMessages.length - 1],
+                    content: prevMessages[prevMessages.length - 1].content + chunk.content
                 }
                 return newMessages;
             });
         }
+        setStreaming(false);
     };
 
-    return { messages, input, setInput, append };
+    return { messages, input, setInput, append, isStreaming };
 }
 
 
 function App() {
     const fileInputRef = useRef<HTMLInputElement | null>(null);
-    const { messages, input, setInput, append } = useChat();
+    const { messages, input, setInput, append, isStreaming } = useChat();
 
     const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
@@ -132,6 +135,7 @@ function App() {
                 >
                     <div className="flex w-full items-center">
                         <AutoResizeTextarea
+                            disabled={isStreaming}
                             onKeyDown={handleKeyDown}
                             onChange={(v) => { setInput(v) }}
                             value={input}
@@ -142,6 +146,7 @@ function App() {
                         <Tooltip>
                             <TooltipTrigger asChild>
                                 <Button
+                                    disabled={isStreaming}
                                     type="button"
                                     variant="ghost"
                                     size="sm"
@@ -155,7 +160,7 @@ function App() {
                         </Tooltip>
                         <Tooltip>
                             <TooltipTrigger asChild>
-                                <Button variant="ghost" size="sm" className="size-6 rounded-full">
+                                <Button disabled={isStreaming} variant="ghost" size="sm" className="size-6 rounded-full">
                                     <ArrowUpIcon size={16} />
                                 </Button>
                             </TooltipTrigger>
