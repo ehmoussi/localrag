@@ -24,7 +24,7 @@ function Header() {
         <header className="m-auto flex max-w-96 flex-col gap-5 text-center">
             <h1 className="text-2xl font-semibold leading-none tracking-tight">AI Chatbot With RAG</h1>
             <p className="text-muted-foreground text-sm">
-                Connect an API Key from your provider and send a message to get started.
+                Connect an API Key from your provider and send a message to get started or use a local model by installing <a className="underline" href="https://ollama.com/download">Ollama</a>.
             </p>
         </header>
     );
