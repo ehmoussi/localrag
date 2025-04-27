@@ -5,14 +5,8 @@ import { Button } from "./components/ui/button";
 import { ArrowUpIcon, PaperclipIcon } from "lucide-react";
 import ollama from 'ollama'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "./components/ui/select";
-
-
-interface Message {
-    id: string;
-    role: string;
-    content: string;
-}
-
+import { db, Message } from "./lib/db";
+import { useLiveQuery } from 'dexie-react-hooks';
 interface MessageProps {
     message: Message;
 }
@@ -36,19 +30,16 @@ function setOllamaLastModel(model: string) {
     return localStorage.setItem("OllamaLastModel", model);
 }
 
-function createMessage(role: string, content: string, id: string | undefined = undefined): Message {
-    let assistantId;
-    if (id === undefined) assistantId = crypto.randomUUID();
-    else assistantId = id;
-    return { id: assistantId, role: role, content: content };
+function createMessage(role: string, content: string, id: number): Message {
+    return { id, role, content };
 }
 
 
-function createUserMessage(content: string, id: string | undefined = undefined): Message {
+function createUserMessage(content: string, id: number): Message {
     return createMessage("user", content, id);
 }
 
-function createAssistantMessage(content: string, id: string | undefined = undefined): Message {
+function createAssistantMessage(content: string, id: number): Message {
     return createMessage("assistant", content, id);
 }
 
@@ -63,7 +54,7 @@ function Header() {
     );
 }
 
-const Message = memo(function Message({ message }: MessageProps) {
+const MessageComp = memo(function MessageComp({ message }: MessageProps) {
     return (
         <div
             data-role={message.role}
@@ -85,7 +76,7 @@ function AssistantMessage({ assistantAnswer }: AssistantAnswerProps) {
     return (
         <>
             {
-                assistantAnswer ? <Message message={assistantAnswer} /> : undefined
+                assistantAnswer ? <MessageComp message={assistantAnswer} /> : undefined
             }
             <div ref={bottomRef}></div>
         </>
@@ -154,6 +145,11 @@ function useChat(currentModel: string | undefined) {
     const [assistantAnswer, setAssistantAnswer] = useState<Message | undefined>(undefined);
     const [isStreaming, setStreaming] = useState<boolean>(false);
 
+    useLiveQuery(async () => {
+        const savedMessages = await db.messages.toArray();
+        setMessages(savedMessages);
+    }, []);
+
     // Create a function to append a message and its answer to the Messages
     const append = async (message: string) => {
         // if there is no model selected or a message is currently displayed
@@ -162,10 +158,12 @@ function useChat(currentModel: string | undefined) {
         try {
             setStreaming(true);
             // Display the user message
-            const userMessage: Message = createUserMessage(message);
+            const userId = messages.length;
+            const assistantId = messages.length + 1;
+            const userMessage: Message = createUserMessage(message, userId);
             setMessages((prevMessages) => [...prevMessages, userMessage]);
+            await db.messages.add(userMessage);
             // Display an empty message for the assistant
-            const assistantId = crypto.randomUUID();
             const assistantMessage = createAssistantMessage("", assistantId);
             setAssistantAnswer(assistantMessage);
             // Send the user message
@@ -181,7 +179,9 @@ function useChat(currentModel: string | undefined) {
                 setAssistantAnswer(createAssistantMessage(accumulateContent, assistantId));
             }
             // Update the messages
-            setMessages((prevMessages) => [...prevMessages, createAssistantMessage(accumulateContent, assistantId)]);
+            const newMessage = createAssistantMessage(accumulateContent, assistantId);
+            setMessages((prevMessages) => [...prevMessages, newMessage]);
+            await db.messages.add(newMessage);
         } catch (error) {
             console.error("Failed to fetch assistant answer:", error);
         } finally {
@@ -237,7 +237,7 @@ function App() {
                             <div className="my-4 flex h-fit min-h-full flex-col gap-4">
                                 {
                                     messages.map((message) => (
-                                        <Message key={message.id} message={message} />
+                                        <MessageComp key={message.id} message={message} />
                                     ))
                                 }
                                 <AssistantMessage assistantAnswer={assistantAnswer} />
