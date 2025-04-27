@@ -17,9 +17,15 @@ interface MessageProps {
     message: Message;
 }
 
-interface MessagesListProps {
-    messages: Message[];
+interface AssistantAnswerProps {
     assistantAnswer: Message | undefined;
+}
+
+interface ModelsSelectorProps {
+    currentModel: string | undefined;
+    setCurrentModel: (model: string) => void;
+    models: string[];
+    isStreaming: boolean;
 }
 
 function getOllamaLastModel(): string | null {
@@ -68,7 +74,7 @@ const Message = memo(function Message({ message }: MessageProps) {
     );
 });
 
-function Messages({ messages, assistantAnswer }: MessagesListProps) {
+function AssistantMessage({ assistantAnswer }: AssistantAnswerProps) {
     const bottomRef = useRef<HTMLDivElement | null>(null);
 
     useEffect(() => {
@@ -77,27 +83,18 @@ function Messages({ messages, assistantAnswer }: MessagesListProps) {
     }, [assistantAnswer]);
 
     return (
-        <div className="my-4 flex h-fit min-h-full flex-col gap-4">
+        <>
             {
-                messages.map((message) => (
-                    <Message key={message.id} message={message} />
-                ))
+                assistantAnswer ? <Message message={assistantAnswer} /> : undefined
             }
-            {assistantAnswer ? <Message message={assistantAnswer} /> : undefined}
             <div ref={bottomRef}></div>
-        </div>
+        </>
     );
 }
 
-interface ModelsSelectorProps {
-    currentModel: string | undefined;
-    setCurrentModel: (model: string) => void;
-    models: string[];
-    isStreaming: () => boolean;
-}
 
 function ModelsSelector({ currentModel, setCurrentModel, models, isStreaming }: ModelsSelectorProps) {
-    return <Select disabled={isStreaming()} value={currentModel ? currentModel : ""} onValueChange={setCurrentModel}>
+    return <Select disabled={isStreaming} value={currentModel ? currentModel : ""} onValueChange={setCurrentModel}>
         <SelectTrigger className="w-[140px]">
             <SelectValue placeholder="Select a model" />
         </SelectTrigger>
@@ -110,14 +107,9 @@ function ModelsSelector({ currentModel, setCurrentModel, models, isStreaming }: 
     </Select>;
 }
 
-function useChat() {
+function useOllamaModels() {
     const [models, setModels] = useState<string[]>([]);
     const [currentModel, setCurrentModel] = useState<string | undefined>(undefined);
-    const [messages, setMessages] = useState<Message[]>([]);
-    const [assistantAnswer, setAssistantAnswer] = useState<Message | undefined>(undefined);
-    const [input, setInput] = useState<string>("");
-    const isStreaming = () => assistantAnswer !== undefined;
-
     // Fetch all the models available
     useEffect(() => {
         let isMounted = true;
@@ -152,12 +144,23 @@ function useChat() {
         if (currentModel)
             setOllamaLastModel(currentModel);
     }, [currentModel]);
+
+    return { models, currentModel, setCurrentModel }
+}
+
+
+function useChat(currentModel: string | undefined) {
+    const [messages, setMessages] = useState<Message[]>([]);
+    const [assistantAnswer, setAssistantAnswer] = useState<Message | undefined>(undefined);
+    const [isStreaming, setStreaming] = useState<boolean>(false);
+
     // Create a function to append a message and its answer to the Messages
     const append = async (message: string) => {
         // if there is no model selected or a message is currently displayed
         // then can't append a new message 
-        if (currentModel === undefined || isStreaming()) return false;
+        if (currentModel === undefined || isStreaming) return false;
         try {
+            setStreaming(true);
             // Display the user message
             const userMessage: Message = createUserMessage(message);
             setMessages((prevMessages) => [...prevMessages, userMessage]);
@@ -184,16 +187,19 @@ function useChat() {
         } finally {
             // Remove the streaming message
             setAssistantAnswer(undefined);
+            setStreaming(false);
         }
         return true;
     };
-    return { models, currentModel, setCurrentModel, messages, assistantAnswer, input, setInput, append, isStreaming };
+    return { messages, assistantAnswer, append, isStreaming };
 }
 
 
 function App() {
     const fileInputRef = useRef<HTMLInputElement | null>(null);
-    const { models, currentModel, setCurrentModel, messages, assistantAnswer, input, setInput, append, isStreaming } = useChat();
+    const [input, setInput] = useState<string>("");
+    const { models, currentModel, setCurrentModel } = useOllamaModels();
+    const { messages, assistantAnswer, append, isStreaming } = useChat(currentModel);
 
     const submitMessage = async () => {
         const oldInput = input;
@@ -226,7 +232,18 @@ function App() {
         <TooltipProvider>
             <main className="ring-none mx-auto flex h-svh max-h-svh w-full max-w-[45rem] flex-col items-stretch border-none">
                 <div className="flex-1 content-center overflow-y-auto px-6">
-                    {messages.length ? <Messages messages={messages} assistantAnswer={assistantAnswer} /> : <Header />}
+                    {
+                        messages.length ?
+                            <div className="my-4 flex h-fit min-h-full flex-col gap-4">
+                                {
+                                    messages.map((message) => (
+                                        <Message key={message.id} message={message} />
+                                    ))
+                                }
+                                <AssistantMessage assistantAnswer={assistantAnswer} />
+                            </div> :
+                            <Header />
+                    }
                 </div>
                 <form
                     onSubmit={handleSubmit}
@@ -234,7 +251,7 @@ function App() {
                 >
                     <div className="flex w-full items-center">
                         <AutoResizeTextarea
-                            disabled={isStreaming()}
+                            disabled={isStreaming}
                             onKeyDown={handleKeyDown}
                             onChange={(v) => { setInput(v) }}
                             value={input}
@@ -242,15 +259,11 @@ function App() {
                             className="placeholder:text-muted-foreground flex-1 bg-transparent focus:outline-none"
                         />
                         <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" multiple />
-                        <Tooltip>
-                            <TooltipTrigger asChild>
-                                <ModelsSelector currentModel={currentModel} setCurrentModel={setCurrentModel} models={models} isStreaming={isStreaming} />
-                            </TooltipTrigger>
-                        </Tooltip>
+                        <ModelsSelector currentModel={currentModel} setCurrentModel={setCurrentModel} models={models} isStreaming={isStreaming} />
                         <Tooltip>
                             <TooltipTrigger asChild>
                                 <Button
-                                    disabled={isStreaming()}
+                                    disabled={isStreaming}
                                     type="button"
                                     variant="ghost"
                                     size="sm"
@@ -264,7 +277,7 @@ function App() {
                         </Tooltip>
                         <Tooltip>
                             <TooltipTrigger asChild>
-                                <Button disabled={isStreaming()} variant="ghost" size="sm" className="size-6 rounded-full">
+                                <Button disabled={isStreaming} variant="ghost" size="sm" className="size-6 rounded-full">
                                     <ArrowUpIcon size={16} />
                                 </Button>
                             </TooltipTrigger>
