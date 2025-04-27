@@ -18,6 +18,7 @@ interface MessageProps {
 
 interface MessagesListProps {
     messages: Message[];
+    assistantAnswer: Message | undefined;
 }
 
 function Header() {
@@ -42,13 +43,13 @@ function Message({ message }: MessageProps) {
     );
 }
 
-function Messages({ messages }: MessagesListProps) {
+function Messages({ messages, assistantAnswer }: MessagesListProps) {
     const bottomRef = useRef<HTMLDivElement | null>(null);
 
     useEffect(() => {
         if (bottomRef.current)
             bottomRef.current.scrollIntoView({ behavior: "smooth" });
-    }, [messages]);
+    }, [assistantAnswer]);
 
     return (
         <div className="my-4 flex h-fit min-h-full flex-col gap-4">
@@ -57,29 +58,19 @@ function Messages({ messages }: MessagesListProps) {
                     <Message key={index} message={message} />
                 ))
             }
+            {assistantAnswer ? <Message message={assistantAnswer} /> : undefined}
             <div ref={bottomRef}></div>
         </div>
     );
 }
 
-async function* useOllama(currentModel: string, messages: Message[]): AsyncGenerator<Message, void, void> {
-    console.log(messages);
-    const response = await ollama.chat({
-        model: currentModel,
-        messages: messages,
-        stream: true,
-    });
-    for await (const chunk of response) {
-        yield (chunk.message as Message);
-    }
-}
-
 function useChat() {
     const [models, setModels] = useState<string[]>([]);
-    const [currentModel, setCurrentModel] = useState<string | null>(null);
+    const [currentModel, setCurrentModel] = useState<string | undefined>(undefined);
     const [messages, setMessages] = useState<Message[]>([]);
+    const [assistantAnswer, setAssistantAnswer] = useState<Message | undefined>(undefined);
     const [input, setInput] = useState<string>("");
-    const [isStreaming, setStreaming] = useState<boolean>(false);
+    const isStreaming = () => assistantAnswer !== undefined;
 
     useEffect(() => {
         ollama.list().then(
@@ -95,33 +86,46 @@ function useChat() {
     }, []);
 
     const append = async (message: string) => {
-        if (currentModel === null) return false;
-        if (isStreaming) return false;
-        setStreaming(true);
-        const userMessage = { role: "user", content: message };
-        setMessages((prevMessages) => [...prevMessages, userMessage]);
-        setMessages((prevMessages) => [...prevMessages, { role: "assistant", content: "" }]);
-        for await (const chunk of useOllama(currentModel, [...messages, userMessage])) {
-            setMessages((prevMessages) => {
-                const newMessages = [...prevMessages];
-                newMessages[newMessages.length - 1] = {
-                    ...prevMessages[prevMessages.length - 1],
-                    content: prevMessages[prevMessages.length - 1].content + chunk.content
-                }
-                return newMessages;
+        // if there is no model selected or a message is currently displayed
+        // then can't append a new message 
+        if (currentModel === undefined || isStreaming()) return false;
+        try {
+            // Display the user message
+            const userMessage: Message = { role: "user", content: message };
+            setMessages((prevMessages) => [...prevMessages, userMessage]);
+            // Display an empty message for the assistant
+            const assistantMessage = { role: "assistant", content: "" };
+            setAssistantAnswer(assistantMessage);
+            // Send the user message
+            const response = await ollama.chat({
+                model: currentModel,
+                messages: [...messages, userMessage],
+                stream: true,
             });
+            let accumulateContent = "";
+            for await (const chunk of response) {
+                accumulateContent += chunk.message.content;
+                // Dispaly the assistant message currently streaming
+                setAssistantAnswer({ role: "assistant", content: accumulateContent });
+            }
+            // Update the messages
+            setMessages((prevMessages) => [...prevMessages, { role: "assistant", content: accumulateContent }]);
+        } catch (error) {
+            console.error("Failed to fetch assistant answer:", error);
+        } finally {
+            // Remove the streaming message
+            setAssistantAnswer(undefined);
         }
-        setStreaming(false);
         return true;
     };
 
-    return { models, currentModel, setCurrentModel, messages, input, setInput, append, isStreaming };
+    return { models, currentModel, setCurrentModel, messages, assistantAnswer, input, setInput, append, isStreaming };
 }
 
 
 function App() {
     const fileInputRef = useRef<HTMLInputElement | null>(null);
-    const { models, currentModel, setCurrentModel, messages, input, setInput, append, isStreaming } = useChat();
+    const { models, currentModel, setCurrentModel, messages, assistantAnswer, input, setInput, append, isStreaming } = useChat();
 
     const submitMessage = async () => {
         const oldInput = input;
@@ -154,7 +158,7 @@ function App() {
         <TooltipProvider>
             <main className="ring-none mx-auto flex h-svh max-h-svh w-full max-w-[45rem] flex-col items-stretch border-none">
                 <div className="flex-1 content-center overflow-y-auto px-6">
-                    {messages.length ? <Messages messages={messages} /> : <Header />}
+                    {messages.length ? <Messages messages={messages} assistantAnswer={assistantAnswer} /> : <Header />}
                 </div>
                 <form
                     onSubmit={handleSubmit}
@@ -162,7 +166,7 @@ function App() {
                 >
                     <div className="flex w-full items-center">
                         <AutoResizeTextarea
-                            disabled={isStreaming}
+                            disabled={isStreaming()}
                             onKeyDown={handleKeyDown}
                             onChange={(v) => { setInput(v) }}
                             value={input}
@@ -172,7 +176,7 @@ function App() {
                         <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" multiple />
                         <Tooltip>
                             <TooltipTrigger asChild>
-                                <Select value={currentModel === null ? "" : currentModel} onValueChange={setCurrentModel}>
+                                <Select disabled={isStreaming()} value={currentModel ? currentModel : ""} onValueChange={setCurrentModel}>
                                     <SelectTrigger className="w-[140px]">
                                         <SelectValue placeholder="Select a model" />
                                     </SelectTrigger>
@@ -186,7 +190,7 @@ function App() {
                             </TooltipTrigger>
                             <TooltipTrigger asChild>
                                 <Button
-                                    disabled={isStreaming}
+                                    disabled={isStreaming()}
                                     type="button"
                                     variant="ghost"
                                     size="sm"
@@ -200,7 +204,7 @@ function App() {
                         </Tooltip>
                         <Tooltip>
                             <TooltipTrigger asChild>
-                                <Button disabled={isStreaming} variant="ghost" size="sm" className="size-6 rounded-full">
+                                <Button disabled={isStreaming()} variant="ghost" size="sm" className="size-6 rounded-full">
                                     <ArrowUpIcon size={16} />
                                 </Button>
                             </TooltipTrigger>
