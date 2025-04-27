@@ -5,6 +5,7 @@ import { Button } from "./components/ui/button";
 import { ArrowUpIcon, PaperclipIcon } from "lucide-react";
 import ollama from 'ollama'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "./components/ui/select";
+import { error } from "console";
 
 
 interface Message {
@@ -20,6 +21,15 @@ interface MessagesListProps {
     messages: Message[];
     assistantAnswer: Message | undefined;
 }
+
+function getOllamaLastModel(): string | null {
+    return localStorage.getItem("OllamaLastModel");
+}
+
+function setOllamaLastModel(model: string) {
+    return localStorage.setItem("OllamaLastModel", model);
+}
+
 
 function Header() {
     return (
@@ -64,6 +74,27 @@ function Messages({ messages, assistantAnswer }: MessagesListProps) {
     );
 }
 
+interface ModelsSelectorProps {
+    currentModel: string | undefined;
+    setCurrentModel: (model: string) => void;
+    models: string[];
+    isStreaming: () => boolean;
+}
+
+function ModelsSelector({ currentModel, setCurrentModel, models, isStreaming }: ModelsSelectorProps) {
+    return <Select disabled={isStreaming()} value={currentModel ? currentModel : ""} onValueChange={setCurrentModel}>
+        <SelectTrigger className="w-[140px]">
+            <SelectValue placeholder="Select a model" />
+        </SelectTrigger>
+        <SelectContent>
+            <SelectGroup>
+                <SelectLabel>Models</SelectLabel>
+                {models.map(model => <SelectItem key={model} value={model}>{model}</SelectItem>)}
+            </SelectGroup>
+        </SelectContent>
+    </Select>;
+}
+
 function useChat() {
     const [models, setModels] = useState<string[]>([]);
     const [currentModel, setCurrentModel] = useState<string | undefined>(undefined);
@@ -72,19 +103,41 @@ function useChat() {
     const [input, setInput] = useState<string>("");
     const isStreaming = () => assistantAnswer !== undefined;
 
+    // Fetch all the models available
     useEffect(() => {
-        ollama.list().then(
-            (responses) => {
+        let isMounted = true;
+        const fetchModels = async () => {
+            const responses = await ollama.list();
+            if (isMounted) {
                 const listModels = responses.models.map((modelResponse) => modelResponse.name);
                 setModels(listModels);
-                if (listModels.length > 0)
-                    setCurrentModel(listModels[0]);
-                else
-                    console.log("failed to fetch the models");
             }
-        );
+        };
+        fetchModels().catch((error) => {
+            console.error("Failed to fetch the Ollama models:", error);
+        });
+        return () => { isMounted = false };
     }, []);
-
+    // Set the currentModel
+    useEffect(() => {
+        if (models.length > 0) {
+            const lastModel = getOllamaLastModel();
+            // Retrieve the selected model during the last visit if available
+            // Othewise select the first one
+            if (lastModel && models.includes(lastModel))
+                setCurrentModel(lastModel);
+            else
+                setCurrentModel(models[0]);
+        }
+        else
+            console.log("failed to fetch the models");
+    }, [models]);
+    // If a currentModel is selected then local storage is updated
+    useEffect(() => {
+        if (currentModel)
+            setOllamaLastModel(currentModel);
+    }, [currentModel]);
+    // Create a function to append a message and its answer to the Messages
     const append = async (message: string) => {
         // if there is no model selected or a message is currently displayed
         // then can't append a new message 
@@ -118,7 +171,6 @@ function useChat() {
         }
         return true;
     };
-
     return { models, currentModel, setCurrentModel, messages, assistantAnswer, input, setInput, append, isStreaming };
 }
 
@@ -176,18 +228,10 @@ function App() {
                         <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" multiple />
                         <Tooltip>
                             <TooltipTrigger asChild>
-                                <Select disabled={isStreaming()} value={currentModel ? currentModel : ""} onValueChange={setCurrentModel}>
-                                    <SelectTrigger className="w-[140px]">
-                                        <SelectValue placeholder="Select a model" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectGroup>
-                                            <SelectLabel>Models</SelectLabel>
-                                            {models.map(model => <SelectItem key={model} value={model}>{model}</SelectItem>)}
-                                        </SelectGroup>
-                                    </SelectContent>
-                                </Select>
+                                <ModelsSelector currentModel={currentModel} setCurrentModel={setCurrentModel} models={models} isStreaming={isStreaming} />
                             </TooltipTrigger>
+                        </Tooltip>
+                        <Tooltip>
                             <TooltipTrigger asChild>
                                 <Button
                                     disabled={isStreaming()}
