@@ -4,6 +4,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./comp
 import { Button } from "./components/ui/button";
 import { ArrowUpIcon, PaperclipIcon } from "lucide-react";
 import ollama from 'ollama'
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "./components/ui/select";
 
 
 interface Message {
@@ -61,10 +62,10 @@ function Messages({ messages }: MessagesListProps) {
     );
 }
 
-async function* useOllama(messages: Message[]): AsyncGenerator<Message, void, void> {
+async function* useOllama(currentModel: string, messages: Message[]): AsyncGenerator<Message, void, void> {
     console.log(messages);
     const response = await ollama.chat({
-        model: "llama3.1",
+        model: currentModel,
         messages: messages,
         stream: true,
     });
@@ -74,17 +75,33 @@ async function* useOllama(messages: Message[]): AsyncGenerator<Message, void, vo
 }
 
 function useChat() {
+    const [models, setModels] = useState<string[]>([]);
+    const [currentModel, setCurrentModel] = useState<string | null>(null);
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState<string>("");
     const [isStreaming, setStreaming] = useState<boolean>(false);
 
+    useEffect(() => {
+        ollama.list().then(
+            (responses) => {
+                const models = responses.models.map((modelResponse) => {
+                    return modelResponse.name;
+                });
+                setModels(models);
+                if (models.length > 0)
+                    setCurrentModel(models[0]);
+            }
+        );
+    }, []);
+
     const append = async (message: string) => {
+        if (currentModel === null) return;
         if (isStreaming) return;
         setStreaming(true);
         const userMessage = { role: "user", content: message };
         setMessages((prevMessages) => [...prevMessages, userMessage]);
         setMessages((prevMessages) => [...prevMessages, { role: "assistant", content: "" }]);
-        for await (const chunk of useOllama([...messages, userMessage])) {
+        for await (const chunk of useOllama(currentModel, [...messages, userMessage])) {
             setMessages((prevMessages) => {
                 const newMessages = [...prevMessages];
                 newMessages[newMessages.length - 1] = {
@@ -97,18 +114,18 @@ function useChat() {
         setStreaming(false);
     };
 
-    return { messages, input, setInput, append, isStreaming };
+    return { models, currentModel, setCurrentModel, messages, input, setInput, append, isStreaming };
 }
 
 
 function App() {
     const fileInputRef = useRef<HTMLInputElement | null>(null);
-    const { messages, input, setInput, append, isStreaming } = useChat();
+    const { models, currentModel, setCurrentModel, messages, input, setInput, append, isStreaming } = useChat();
 
-    const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+    const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
-        append(input);
         setInput("");
+        await append(input);
     };
 
     const handleFileUpload = () => {
@@ -125,7 +142,7 @@ function App() {
 
     return (
         <TooltipProvider>
-            <main className="ring-none mx-auto flex h-svh max-h-svh w-full max-w-[35rem] flex-col items-stretch border-none">
+            <main className="ring-none mx-auto flex h-svh max-h-svh w-full max-w-[45rem] flex-col items-stretch border-none">
                 <div className="flex-1 content-center overflow-y-auto px-6">
                     {messages.length ? <Messages messages={messages} /> : <Header />}
                 </div>
@@ -144,6 +161,19 @@ function App() {
                         />
                         <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" multiple />
                         <Tooltip>
+                            <TooltipTrigger asChild>
+                                <Select value={currentModel === null ? "" : currentModel} onValueChange={setCurrentModel}>
+                                    <SelectTrigger className="w-[140px]">
+                                        <SelectValue placeholder="Select a model" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectGroup>
+                                            <SelectLabel>Models</SelectLabel>
+                                            {models.map(model => <SelectItem key={model} value={model}>{model}</SelectItem>)}
+                                        </SelectGroup>
+                                    </SelectContent>
+                                </Select>
+                            </TooltipTrigger>
                             <TooltipTrigger asChild>
                                 <Button
                                     disabled={isStreaming}
