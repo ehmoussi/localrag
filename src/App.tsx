@@ -84,19 +84,19 @@ function useChat() {
     useEffect(() => {
         ollama.list().then(
             (responses) => {
-                const models = responses.models.map((modelResponse) => {
-                    return modelResponse.name;
-                });
-                setModels(models);
-                if (models.length > 0)
-                    setCurrentModel(models[0]);
+                const listModels = responses.models.map((modelResponse) => modelResponse.name);
+                setModels(listModels);
+                if (listModels.length > 0)
+                    setCurrentModel(listModels[0]);
+                else
+                    console.log("failed to fetch the models");
             }
         );
     }, []);
 
     const append = async (message: string) => {
-        if (currentModel === null) return;
-        if (isStreaming) return;
+        if (currentModel === null) return false;
+        if (isStreaming) return false;
         setStreaming(true);
         const userMessage = { role: "user", content: message };
         setMessages((prevMessages) => [...prevMessages, userMessage]);
@@ -112,6 +112,7 @@ function useChat() {
             });
         }
         setStreaming(false);
+        return true;
     };
 
     return { models, currentModel, setCurrentModel, messages, input, setInput, append, isStreaming };
@@ -122,18 +123,27 @@ function App() {
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const { models, currentModel, setCurrentModel, messages, input, setInput, append, isStreaming } = useChat();
 
+    const submitMessage = async () => {
+        const oldInput = input;
+        setInput("");
+        const isOk = await append(input);
+        if (!isOk)
+            setInput(oldInput);
+    };
+
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
-        setInput("");
-        await append(input);
+        await submitMessage();
     };
 
     const handleFileUpload = () => {
-
     };
 
-    const handleKeyDown = () => {
-
+    const handleKeyDown = async (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+        if (event.ctrlKey && event.key === "Enter") {
+            event.preventDefault();
+            await submitMessage();
+        }
     };
 
     const handleFileButtonClick = () => {
