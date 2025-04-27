@@ -30,6 +30,21 @@ function setOllamaLastModel(model: string) {
     return localStorage.setItem("OllamaLastModel", model);
 }
 
+function createMessage(role: string, content: string, id: string | undefined = undefined): Message {
+    let assistantId;
+    if (id === undefined) assistantId = crypto.randomUUID();
+    else assistantId = id;
+    return { id: assistantId, role: role, content: content };
+}
+
+
+function createUserMessage(content: string, id: string | undefined = undefined): Message {
+    return createMessage("user", content, id);
+}
+
+function createAssistantMessage(content: string, id: string | undefined = undefined): Message {
+    return createMessage("assistant", content, id);
+}
 
 function Header() {
     return (
@@ -144,14 +159,11 @@ function useChat() {
         if (currentModel === undefined || isStreaming()) return false;
         try {
             // Display the user message
-            const userMessage: Message = { id: crypto.randomUUID(), role: "user", content: message };
+            const userMessage: Message = createUserMessage(message);
             setMessages((prevMessages) => [...prevMessages, userMessage]);
             // Display an empty message for the assistant
             const assistantId = crypto.randomUUID();
-            const createAssistantMessage = (id: string, content: string) => {
-                return { id: id, role: "assistant", content: content };
-            };
-            const assistantMessage = createAssistantMessage(assistantId, "");
+            const assistantMessage = createAssistantMessage("", assistantId);
             setAssistantAnswer(assistantMessage);
             // Send the user message
             const response = await ollama.chat({
@@ -163,10 +175,10 @@ function useChat() {
             for await (const chunk of response) {
                 accumulateContent += chunk.message.content;
                 // Dispaly the assistant message currently streaming
-                setAssistantAnswer(createAssistantMessage(assistantId, accumulateContent));
+                setAssistantAnswer(createAssistantMessage(accumulateContent, assistantId));
             }
             // Update the messages
-            setMessages((prevMessages) => [...prevMessages, createAssistantMessage(assistantId, accumulateContent)]);
+            setMessages((prevMessages) => [...prevMessages, createAssistantMessage(accumulateContent, assistantId)]);
         } catch (error) {
             console.error("Failed to fetch assistant answer:", error);
         } finally {
