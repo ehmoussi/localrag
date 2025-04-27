@@ -5,10 +5,10 @@ import { Button } from "./components/ui/button";
 import { ArrowUpIcon, PaperclipIcon } from "lucide-react";
 import ollama from 'ollama'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "./components/ui/select";
-import { error } from "console";
 
 
 interface Message {
+    id: string;
     role: string;
     content: string;
 }
@@ -64,8 +64,8 @@ function Messages({ messages, assistantAnswer }: MessagesListProps) {
     return (
         <div className="my-4 flex h-fit min-h-full flex-col gap-4">
             {
-                messages.map((message, index) => (
-                    <Message key={index} message={message} />
+                messages.map((message) => (
+                    <Message key={message.id} message={message} />
                 ))
             }
             {assistantAnswer ? <Message message={assistantAnswer} /> : undefined}
@@ -144,10 +144,14 @@ function useChat() {
         if (currentModel === undefined || isStreaming()) return false;
         try {
             // Display the user message
-            const userMessage: Message = { role: "user", content: message };
+            const userMessage: Message = { id: crypto.randomUUID(), role: "user", content: message };
             setMessages((prevMessages) => [...prevMessages, userMessage]);
             // Display an empty message for the assistant
-            const assistantMessage = { role: "assistant", content: "" };
+            const assistantId = crypto.randomUUID();
+            const createAssistantMessage = (id: string, content: string) => {
+                return { id: id, role: "assistant", content: content };
+            };
+            const assistantMessage = createAssistantMessage(assistantId, "");
             setAssistantAnswer(assistantMessage);
             // Send the user message
             const response = await ollama.chat({
@@ -159,10 +163,10 @@ function useChat() {
             for await (const chunk of response) {
                 accumulateContent += chunk.message.content;
                 // Dispaly the assistant message currently streaming
-                setAssistantAnswer({ role: "assistant", content: accumulateContent });
+                setAssistantAnswer(createAssistantMessage(assistantId, accumulateContent));
             }
             // Update the messages
-            setMessages((prevMessages) => [...prevMessages, { role: "assistant", content: accumulateContent }]);
+            setMessages((prevMessages) => [...prevMessages, createAssistantMessage(assistantId, accumulateContent)]);
         } catch (error) {
             console.error("Failed to fetch assistant answer:", error);
         } finally {
