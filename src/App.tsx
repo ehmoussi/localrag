@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { memo, useEffect, useRef, useState } from "react";
 import { AutoResizeTextarea } from "./AutoResizeTextarea";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./components/ui/tooltip";
 import { Button } from "./components/ui/button";
@@ -57,7 +57,7 @@ function Header() {
     );
 }
 
-function Message({ message }: MessageProps) {
+const Message = memo(function Message({ message }: MessageProps) {
     return (
         <div
             data-role={message.role}
@@ -66,7 +66,7 @@ function Message({ message }: MessageProps) {
             {message.content}
         </div>
     );
-}
+});
 
 function Messages({ messages, assistantAnswer }: MessagesListProps) {
     const bottomRef = useRef<HTMLDivElement | null>(null);
