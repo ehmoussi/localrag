@@ -11,6 +11,7 @@ export interface Message {
 
 export interface Conversation {
     id: UUID;
+    title: string;
     messages: Message[];
 }
 
@@ -26,7 +27,8 @@ db.version(1).stores({
 export async function newConversation(): Promise<UUID> {
     const id = crypto.randomUUID();
     const messages: Message[] = [];
-    const conversation = { id, messages };
+    const title = "New Conversation";
+    const conversation = { id, title, messages };
     await db.conversations.add(conversation);
     return conversation.id;
 }

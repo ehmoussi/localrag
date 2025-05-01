@@ -10,6 +10,10 @@ import {
 } from "./lib/db";
 import { useLiveQuery } from 'dexie-react-hooks';
 import { UUID } from "crypto";
+import { SidebarProvider, SidebarTrigger } from "./components/ui/sidebar";
+import { getCurrentConversation, getOllamaLastModel, setCurrentConversation, setOllamaLastModel } from "./lib/storage";
+import { ConversationsList } from "./ConversationsList";
+
 interface MessageProps {
     message: Message;
 }
@@ -23,24 +27,6 @@ interface ModelsSelectorProps {
     setCurrentModel: (model: string) => void;
     models: string[];
     isStreaming: boolean;
-}
-
-function getOllamaLastModel(): string | null {
-    return localStorage.getItem("ollama_last_model");
-}
-
-function setOllamaLastModel(model: string) {
-    return localStorage.setItem("ollama_last_model", model);
-}
-
-function getCurrentConversation(): UUID | undefined {
-    const conversationId = localStorage.getItem("current_conversation_id") as UUID;
-    if (conversationId === null) return undefined;
-    return conversationId;
-}
-
-function setCurrentConversation(conversationId: UUID) {
-    return localStorage.setItem("current_conversation_id", conversationId);
 }
 
 function Header() {
@@ -227,6 +213,7 @@ function App() {
 
     const { messages, assistantAnswer, append, isStreaming } = useChat(currentModel);
 
+
     const submitMessage = async () => {
         const oldInput = input;
         setInput("");
@@ -255,64 +242,68 @@ function App() {
     };
 
     return (
-        <TooltipProvider>
-            <main className="ring-none mx-auto flex h-svh max-h-svh w-full max-w-[45rem] flex-col items-stretch border-none">
-                <div className="flex-1 content-center overflow-y-auto px-6">
-                    {
-                        messages.length ?
-                            <div className="my-4 flex h-fit min-h-full flex-col gap-4">
-                                {
-                                    messages.map((message) => (
-                                        <MessageComp key={message.id} message={message} />
-                                    ))
-                                }
-                                <AssistantMessage assistantAnswer={assistantAnswer} />
-                            </div> :
-                            <Header />
-                    }
-                </div>
-                <form
-                    onSubmit={handleSubmit}
-                    className="border-input bg-background focus-within:ring-ring/10 relative mx-6 mb-6 flex flex-col items-center rounded-[16px] border px-3 py-1.5 pr-8 text-sm focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-0"
-                >
-                    <div className="flex w-full items-center">
-                        <AutoResizeTextarea
-                            disabled={isStreaming}
-                            onKeyDown={handleKeyDown}
-                            onChange={(v) => { setInput(v) }}
-                            value={input}
-                            placeholder="Enter a message"
-                            className="placeholder:text-muted-foreground flex-1 bg-transparent focus:outline-none"
-                        />
-                        <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" multiple />
-                        <ModelsSelector currentModel={currentModel} setCurrentModel={setCurrentModel} models={models} isStreaming={isStreaming} />
-                        <Tooltip>
-                            <TooltipTrigger asChild>
-                                <Button
-                                    disabled={isStreaming}
-                                    type="button"
-                                    variant="ghost"
-                                    size="sm"
-                                    className="mr-1 size-6 rounded-full"
-                                    onClick={handleFileButtonClick}
-                                >
-                                    <PaperclipIcon size={16} />
-                                </Button>
-                            </TooltipTrigger>
-                            <TooltipContent sideOffset={12}>Attach file</TooltipContent>
-                        </Tooltip>
-                        <Tooltip>
-                            <TooltipTrigger asChild>
-                                <Button disabled={isStreaming} variant="ghost" size="sm" className="size-6 rounded-full">
-                                    <ArrowUpIcon size={16} />
-                                </Button>
-                            </TooltipTrigger>
-                            <TooltipContent sideOffset={12}>Submit</TooltipContent>
-                        </Tooltip>
+        <SidebarProvider>
+            <ConversationsList />
+            <TooltipProvider>
+                <SidebarTrigger />
+                <main className="ring-none mx-auto flex h-svh max-h-svh w-full max-w-[45rem] flex-col items-stretch border-none">
+                    <div className="flex-1 content-center overflow-y-auto px-6">
+                        {
+                            messages.length ?
+                                <div className="my-4 flex h-fit min-h-full flex-col gap-4">
+                                    {
+                                        messages.map((message) => (
+                                            <MessageComp key={message.id} message={message} />
+                                        ))
+                                    }
+                                    <AssistantMessage assistantAnswer={assistantAnswer} />
+                                </div> :
+                                <Header />
+                        }
                     </div>
-                </form>
-            </main>
-        </TooltipProvider>
+                    <form
+                        onSubmit={handleSubmit}
+                        className="border-input bg-background focus-within:ring-ring/10 relative mx-6 mb-6 flex flex-col items-center rounded-[16px] border px-3 py-1.5 pr-8 text-sm focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-0"
+                    >
+                        <div className="flex w-full items-center">
+                            <AutoResizeTextarea
+                                disabled={isStreaming}
+                                onKeyDown={handleKeyDown}
+                                onChange={(v) => { setInput(v) }}
+                                value={input}
+                                placeholder="Enter a message"
+                                className="placeholder:text-muted-foreground flex-1 bg-transparent focus:outline-none"
+                            />
+                            <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" multiple />
+                            <ModelsSelector currentModel={currentModel} setCurrentModel={setCurrentModel} models={models} isStreaming={isStreaming} />
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <Button
+                                        disabled={isStreaming}
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        className="mr-1 size-6 rounded-full"
+                                        onClick={handleFileButtonClick}
+                                    >
+                                        <PaperclipIcon size={16} />
+                                    </Button>
+                                </TooltipTrigger>
+                                <TooltipContent sideOffset={12}>Attach file</TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <Button disabled={isStreaming} variant="ghost" size="sm" className="size-6 rounded-full">
+                                        <ArrowUpIcon size={16} />
+                                    </Button>
+                                </TooltipTrigger>
+                                <TooltipContent sideOffset={12}>Submit</TooltipContent>
+                            </Tooltip>
+                        </div>
+                    </form>
+                </main>
+            </TooltipProvider>
+        </SidebarProvider>
     )
 }
 
