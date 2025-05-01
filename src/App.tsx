@@ -5,8 +5,11 @@ import { Button } from "./components/ui/button";
 import { ArrowUpIcon, PaperclipIcon } from "lucide-react";
 import ollama from 'ollama'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "./components/ui/select";
-import { db, Message } from "./lib/db";
+import {
+    db, getMessages, Message, newConversation, createUserMessage, createAssistantMessage, addMessage
+} from "./lib/db";
 import { useLiveQuery } from 'dexie-react-hooks';
+import { UUID } from "crypto";
 interface MessageProps {
     message: Message;
 }
@@ -23,24 +26,21 @@ interface ModelsSelectorProps {
 }
 
 function getOllamaLastModel(): string | null {
-    return localStorage.getItem("OllamaLastModel");
+    return localStorage.getItem("ollama_last_model");
 }
 
 function setOllamaLastModel(model: string) {
-    return localStorage.setItem("OllamaLastModel", model);
+    return localStorage.setItem("ollama_last_model", model);
 }
 
-function createMessage(role: string, content: string, id: number): Message {
-    return { id, role, content };
+function getCurrentConversation(): UUID | undefined {
+    const conversationId = localStorage.getItem("current_conversation_id") as UUID;
+    if (conversationId === null) return undefined;
+    return conversationId;
 }
 
-
-function createUserMessage(content: string, id: number): Message {
-    return createMessage("user", content, id);
-}
-
-function createAssistantMessage(content: string, id: number): Message {
-    return createMessage("assistant", content, id);
+function setCurrentConversation(conversationId: UUID) {
+    return localStorage.setItem("current_conversation_id", conversationId);
 }
 
 function Header() {
@@ -141,14 +141,17 @@ function useOllamaModels() {
 
 
 function useChat(currentModel: string | undefined) {
+    const [conversationId, setConversationId] = useState<UUID | undefined>(getCurrentConversation());
     const [messages, setMessages] = useState<Message[]>([]);
     const [assistantAnswer, setAssistantAnswer] = useState<Message | undefined>(undefined);
     const [isStreaming, setStreaming] = useState<boolean>(false);
 
     useLiveQuery(async () => {
-        const savedMessages = await db.messages.toArray();
-        setMessages(savedMessages);
-    }, []);
+        if (conversationId !== undefined) {
+            const savedMessages = await getMessages(conversationId);
+            setMessages(savedMessages);
+        }
+    }, [conversationId]);
 
     // Create a function to append a message and its answer to the Messages
     const append = async (message: string) => {
@@ -156,14 +159,23 @@ function useChat(currentModel: string | undefined) {
         // then can't append a new message 
         if (currentModel === undefined || isStreaming) return false;
         try {
+            let currentConversationId;
+            if (conversationId === undefined) {
+                const conversation = newConversation();
+                await db.conversations.add(conversation);
+                setConversationId(conversation.id);
+                setCurrentConversation(conversation.id);
+                currentConversationId = conversation.id;
+            } else {
+                currentConversationId = conversationId;
+            }
             setStreaming(true);
             // Display the user message
-            const userId = messages.length;
-            const assistantId = messages.length + 1;
-            const userMessage: Message = createUserMessage(message, userId);
+            const userMessage: Message = createUserMessage(message);
             setMessages((prevMessages) => [...prevMessages, userMessage]);
-            await db.messages.add(userMessage);
+            await addMessage(currentConversationId, userMessage);
             // Display an empty message for the assistant
+            let assistantId = crypto.randomUUID();
             const assistantMessage = createAssistantMessage("", assistantId);
             setAssistantAnswer(assistantMessage);
             // Send the user message
@@ -181,7 +193,7 @@ function useChat(currentModel: string | undefined) {
             // Update the messages
             const newMessage = createAssistantMessage(accumulateContent, assistantId);
             setMessages((prevMessages) => [...prevMessages, newMessage]);
-            await db.messages.add(newMessage);
+            addMessage(currentConversationId, newMessage);
         } catch (error) {
             console.error("Failed to fetch assistant answer:", error);
         } finally {
@@ -199,6 +211,7 @@ function App() {
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const [input, setInput] = useState<string>("");
     const { models, currentModel, setCurrentModel } = useOllamaModels();
+
     const { messages, assistantAnswer, append, isStreaming } = useChat(currentModel);
 
     const submitMessage = async () => {
