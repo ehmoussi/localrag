@@ -1,6 +1,6 @@
 import React from "react";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "../ui/select";
-import { useChat } from "./ChatProvider";
+import { useChat } from "./use-chat";
 import { addMessage, createAssistantMessage, createUserMessage, db, newConversation } from "../../lib/db";
 import { getOllamaLastModel, setCurrentConversation, setOllamaLastModel } from "../../lib/storage";
 import ollama from 'ollama';

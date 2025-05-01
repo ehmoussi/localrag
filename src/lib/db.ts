@@ -1,6 +1,5 @@
 import { UUID } from 'crypto';
 import { Dexie, EntityTable } from 'dexie';
-import { C } from 'ollama/dist/shared/ollama.f6b57f53.mjs';
 
 
 

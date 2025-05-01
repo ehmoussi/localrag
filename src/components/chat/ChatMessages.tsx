@@ -1,6 +1,6 @@
 import React from "react";
 import { Message } from "../../lib/db";
-import { useChat } from "./ChatProvider";
+import { useChat } from "./use-chat";
 
 function Header() {
     return (

@@ -4,7 +4,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { SquarePen } from "lucide-react";
 import { Conversation, getConversations, getMessages, newConversation } from "./lib/db";
 import React, { useCallback } from "react";
-import { useChat } from "./components/chat/ChatProvider";
+import { useChat } from "./components/chat/use-chat";
 
 
 export function ConversationHeader() {
@@ -31,7 +31,7 @@ export function ConversationHeader() {
 }
 
 
-function ConversationItem({ conversation }: { conversation: Conversation }) {
+const ConversationItem = React.memo(({ conversation }: { conversation: Conversation }) => {
     const { state, dispatch } = useChat();
 
     const selectConversation = useCallback(async (event: React.FormEvent<HTMLAnchorElement>, conversationId: UUID) => {
@@ -50,7 +50,7 @@ function ConversationItem({ conversation }: { conversation: Conversation }) {
             </SidebarMenuButton>
         </SidebarMenuItem>
     );
-}
+});
 
 
 
