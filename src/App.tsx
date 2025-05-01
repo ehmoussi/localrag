@@ -6,7 +6,7 @@ import { ArrowUpIcon, PaperclipIcon } from "lucide-react";
 import ollama from 'ollama'
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "./components/ui/select";
 import {
-    db, getMessages, Message, newConversation, createUserMessage, createAssistantMessage, addMessage
+    db, getMessages, Message, createUserMessage, createAssistantMessage, addMessage, newConversation
 } from "./lib/db";
 import { useLiveQuery } from 'dexie-react-hooks';
 import { UUID } from "crypto";
@@ -148,10 +148,32 @@ function useChat(currentModel: string | undefined) {
 
     useLiveQuery(async () => {
         if (conversationId !== undefined) {
-            const savedMessages = await getMessages(conversationId);
-            setMessages(savedMessages);
+            try {
+                const savedMessages = await getMessages(conversationId);
+                setMessages(savedMessages);
+            } catch (error) {
+                setMessages([]);
+            }
         }
     }, [conversationId]);
+
+    const getCurrentConversationId = async (): Promise<UUID> => {
+        let currentConversationId;
+        if (conversationId === undefined) {
+            currentConversationId = await newConversation();
+            setConversationId(currentConversationId);
+            setCurrentConversation(currentConversationId);
+        } else {
+            if (await db.conversations.get(conversationId) !== undefined)
+                currentConversationId = conversationId;
+            else {
+                currentConversationId = await newConversation();
+                setConversationId(currentConversationId);
+                setCurrentConversation(currentConversationId);
+            }
+        }
+        return currentConversationId;
+    }
 
     // Create a function to append a message and its answer to the Messages
     const append = async (message: string) => {
@@ -159,16 +181,7 @@ function useChat(currentModel: string | undefined) {
         // then can't append a new message 
         if (currentModel === undefined || isStreaming) return false;
         try {
-            let currentConversationId;
-            if (conversationId === undefined) {
-                const conversation = newConversation();
-                await db.conversations.add(conversation);
-                setConversationId(conversation.id);
-                setCurrentConversation(conversation.id);
-                currentConversationId = conversation.id;
-            } else {
-                currentConversationId = conversationId;
-            }
+            const currentConversationId = await getCurrentConversationId();
             setStreaming(true);
             // Display the user message
             const userMessage: Message = createUserMessage(message);

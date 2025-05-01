@@ -23,17 +23,20 @@ db.version(1).stores({
 });
 
 
+export async function newConversation(): Promise<UUID> {
+    const id = crypto.randomUUID();
+    const messages: Message[] = [];
+    const conversation = { id, messages };
+    await db.conversations.add(conversation);
+    return conversation.id;
+}
+
 export async function getMessages(conversationId: UUID): Promise<Message[]> {
     const conversation = await db.conversations.get(conversationId);
     if (conversation === undefined) throw new Error(`Can't find a conversation with id=${conversationId}`);
     return conversation.messages.filter((m): m is Message => m !== undefined);
 }
 
-export function newConversation(): Conversation {
-    const id = crypto.randomUUID();
-    const messages: Message[] = [];
-    return { id, messages };
-}
 
 export async function addMessage(conversationId: UUID, message: Message) {
     try {
