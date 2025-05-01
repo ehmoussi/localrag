@@ -1,60 +1,76 @@
-import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar"
+import { SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar"
 import { UUID } from "crypto";
 import { useLiveQuery } from "dexie-react-hooks";
 import { SquarePen } from "lucide-react";
-import { db } from "./lib/db";
-import { getCurrentConversation } from "./lib/storage";
+import { Conversation, getConversations, getMessages, newConversation } from "./lib/db";
+import React, { useCallback } from "react";
+import { useChat } from "./components/chat/ChatProvider";
 
-interface Conversation {
-    id: UUID;
-    title: string,
-    isSelected: boolean;
+
+export function ConversationHeader() {
+    const { dispatch } = useChat();
+
+    const createNewConversation = useCallback(async (event: React.FormEvent<HTMLAnchorElement>) => {
+        event.preventDefault();
+        const conversationId = await newConversation();
+        dispatch({ type: "SET_CONVERSATION", payload: conversationId });
+        dispatch({ type: "SET_MESSAGES", payload: [] })
+    }, [dispatch]);
+
+    return (
+        <SidebarMenu>
+            <SidebarMenuItem>
+                <SidebarMenuButton>
+                    <a href="#" onClick={createNewConversation}>
+                        <SquarePen />
+                    </a>
+                </SidebarMenuButton>
+            </SidebarMenuItem>
+        </SidebarMenu>
+    );
 }
+
+
+function ConversationItem({ conversation }: { conversation: Conversation }) {
+    const { state, dispatch } = useChat();
+
+    const selectConversation = useCallback(async (event: React.FormEvent<HTMLAnchorElement>, conversationId: UUID) => {
+        event.preventDefault();
+        const messages = await getMessages(conversationId);
+        dispatch({ type: "SET_MESSAGES", payload: messages });
+        dispatch({ type: "SET_CONVERSATION", payload: conversationId });
+    }, [dispatch]);
+
+    return (
+        <SidebarMenuItem key={conversation.id}>
+            <SidebarMenuButton asChild isActive={conversation.id === state.conversationId}>
+                <a href="#" onClick={(e) => selectConversation(e, conversation.id)}>
+                    <span>{conversation.title ? conversation.title : "New Conversation"}</span>
+                </a>
+            </SidebarMenuButton>
+        </SidebarMenuItem>
+    );
+}
+
 
 
 export function ConversationsList() {
     const conversations = useLiveQuery(async (): Promise<Conversation[]> => {
-        const currentConversationId = getCurrentConversation();
-        const conversations = await db.conversations.toArray();
-        return conversations.map((conversation) => {
-            return {
-                id: conversation.id,
-                title: "New Conversation",
-                isSelected: currentConversationId ? currentConversationId == conversation.id : false,
-            };
-        });
-    });
+        return await getConversations();
+    }, []);
+
     return (
-        <Sidebar>
-            <SidebarHeader>
+        <SidebarGroup>
+            <SidebarGroupLabel>Conversations</SidebarGroupLabel>
+            <SidebarGroupContent>
                 <SidebarMenu>
-                    <SidebarMenuItem>
-                        <SidebarMenuButton>
-                            <SquarePen />
-                        </SidebarMenuButton>
-                    </SidebarMenuItem>
+                    {conversations &&
+                        conversations.map((conversation) => (
+                            <ConversationItem key={conversation.id} conversation={conversation} />
+                        ))
+                    }
                 </SidebarMenu>
-            </SidebarHeader>
-            <SidebarContent>
-                <SidebarGroup>
-                    <SidebarGroupLabel>Conversations</SidebarGroupLabel>
-                    <SidebarGroupContent>
-                        <SidebarMenu>
-                            {conversations &&
-                                conversations.map((conversation) => (
-                                    <SidebarMenuItem key={conversation.title}>
-                                        <SidebarMenuButton asChild isActive={conversation.isSelected}>
-                                            <a href="#">
-                                                <span>{conversation.title}</span>
-                                            </a>
-                                        </SidebarMenuButton>
-                                    </SidebarMenuItem>
-                                ))
-                            }
-                        </SidebarMenu>
-                    </SidebarGroupContent>
-                </SidebarGroup>
-            </SidebarContent>
-        </Sidebar>
-    )
+            </SidebarGroupContent>
+        </SidebarGroup>
+    );
 }

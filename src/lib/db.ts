@@ -1,5 +1,6 @@
 import { UUID } from 'crypto';
 import { Dexie, EntityTable } from 'dexie';
+import { C } from 'ollama/dist/shared/ollama.f6b57f53.mjs';
 
 
 
@@ -12,6 +13,7 @@ export interface Message {
 export interface Conversation {
     id: UUID;
     title: string;
+    startDate: Date;
     messages: Message[];
 }
 
@@ -24,11 +26,16 @@ db.version(1).stores({
 });
 
 
+export async function getConversations(): Promise<Conversation[]> {
+    return await db.conversations.toCollection().sortBy("startDate");
+}
+
 export async function newConversation(): Promise<UUID> {
     const id = crypto.randomUUID();
     const messages: Message[] = [];
     const title = "New Conversation";
-    const conversation = { id, title, messages };
+    const startDate = new Date();
+    const conversation = { id, title, startDate, messages };
     await db.conversations.add(conversation);
     return conversation.id;
 }
