@@ -42,13 +42,8 @@ export function ChatForm() {
     }, [chatState, chatDispatch]);
 
 
-    const appendMessage = React.useCallback(async (message: string): Promise<boolean> => {
-        // if there is no model selected or a message is currently displayed
-        // then can't append a new message 
-        if (modelState.currentModel === undefined || isStreaming) return false;
+    const appendMessage = React.useCallback(async (currentConversationId: UUID, message: string, currentModel: string) => {
         try {
-            const currentConversationId = await getCurrentConversationId();
-            setStreaming(true);
             // Display the user message
             const userMessage = createUserMessage(currentConversationId, message);
             chatDispatch({ type: "ADD_MESSAGE", payload: userMessage });
@@ -59,7 +54,7 @@ export function ChatForm() {
             chatDispatch({ type: "SET_ASSISTANT_ANSWER", payload: assistantMessage });
             // Send the user message
             const response = await ollama.chat({
-                model: modelState.currentModel,
+                model: currentModel,
                 messages: [...chatState.messages, userMessage],
                 stream: true,
             });
@@ -91,33 +86,33 @@ export function ChatForm() {
         } finally {
             // Remove the streaming message
             chatDispatch({ type: "SET_ASSISTANT_ANSWER", payload: undefined });
+        }
+    }, [chatState.messages, chatDispatch]);
+
+    const submitMessage = async () => {
+        if (input !== "") {
+            // if there is no model selected or a message is currently displayed
+            // then can't append a new message 
+            if (modelState.currentModel === undefined || isStreaming) return;
+            const currentConversationId = await getCurrentConversationId();
+            setInput("");
+            setStreaming(true);
+            await appendMessage(currentConversationId, input, modelState.currentModel);
             setStreaming(false);
         }
-        return true;
-    }, [chatState, chatDispatch, modelState, getCurrentConversationId, isStreaming, setStreaming]);
+    };
 
-    const submitMessage = React.useCallback(async () => {
-        const oldInput = input;
-        if (input !== "") {
-            setInput("");
-            const isOk = await appendMessage(input);
-            if (!isOk)
-                setInput(oldInput);
-        }
-    }, [appendMessage, input, setInput]);
-
-    const handleSubmit = React.useCallback(async (e: React.FormEvent<HTMLFormElement>) => {
+    const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         await submitMessage();
-    }, [submitMessage]);
+    };
 
-
-    const handleKeyDown = React.useCallback(async (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    const handleKeyDown = async (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
         if (event.ctrlKey && event.key === "Enter") {
             event.preventDefault();
             await submitMessage();
         }
-    }, [submitMessage]);
+    };
 
     const handleFileUpload = () => {
     };
