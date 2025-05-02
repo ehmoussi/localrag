@@ -1,5 +1,4 @@
 import { SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuAction, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar"
-import { UUID } from "crypto";
 import { useLiveQuery } from "dexie-react-hooks";
 import { MoreHorizontal, SquarePen, Trash } from "lucide-react";
 import { Conversation, db, getConversations, getMessages, newConversation } from "./lib/db";
@@ -9,14 +8,14 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 
 
 export function ConversationHeader() {
-    const { dispatch } = useChat();
+    const { chatDispatch } = useChat();
 
     const createNewConversation = React.useCallback(async (event: React.FormEvent<HTMLAnchorElement>) => {
         event.preventDefault();
         const conversationId = await newConversation();
-        dispatch({ type: "SET_CONVERSATION", payload: conversationId });
-        dispatch({ type: "SET_MESSAGES", payload: [] })
-    }, [dispatch]);
+        chatDispatch({ type: "SET_CONVERSATION", payload: conversationId });
+        chatDispatch({ type: "SET_MESSAGES", payload: [] })
+    }, [chatDispatch]);
 
     return (
         <SidebarMenu>
@@ -33,23 +32,23 @@ export function ConversationHeader() {
 
 
 const ConversationItem = React.memo(({ conversation }: { conversation: Conversation }) => {
-    const { state, dispatch } = useChat();
+    const { chatState, chatDispatch } = useChat();
 
     const selectConversation = React.useCallback(async (event: React.FormEvent<HTMLAnchorElement>) => {
         event.preventDefault();
         const messages = await getMessages(conversation.id);
-        dispatch({ type: "SET_MESSAGES", payload: messages });
-        dispatch({ type: "SET_CONVERSATION", payload: conversation.id });
-    }, [dispatch]);
+        chatDispatch({ type: "SET_MESSAGES", payload: messages });
+        chatDispatch({ type: "SET_CONVERSATION", payload: conversation.id });
+    }, [chatDispatch]);
 
     const deleteConversation = async (event: React.FormEvent<HTMLDivElement>) => {
         event.preventDefault();
         await db.conversations.delete(conversation.id);
-        dispatch({ type: "SET_MESSAGES", payload: [] });
-        dispatch({ type: "SET_CONVERSATION", payload: undefined });
+        chatDispatch({ type: "SET_MESSAGES", payload: [] });
+        chatDispatch({ type: "SET_CONVERSATION", payload: undefined });
     };
 
-    const isSelected = conversation.id === state.conversationId;
+    const isSelected = conversation.id === chatState.conversationId;
 
     return (
         <SidebarMenuItem>

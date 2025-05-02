@@ -44,18 +44,18 @@ function AssistantMessage({ assistantAnswer }: { assistantAnswer: Message | unde
 
 
 export function ChatMessages() {
-    const { state } = useChat();
+    const { chatState } = useChat();
     return (
         <div className="flex-1 content-center overflow-y-auto px-6">
             {
-                state.messages.length ?
+                chatState.messages.length ?
                     <div className="my-4 flex h-fit min-h-full flex-col gap-4">
                         {
-                            state.messages.map((message) => (
+                            chatState.messages.map((message) => (
                                 <MessageComp key={message.id} message={message} />
                             ))
                         }
-                        <AssistantMessage assistantAnswer={state.assistantAnswer} />
+                        <AssistantMessage assistantAnswer={chatState.assistantAnswer} />
                     </div> :
                     <Header />
             }

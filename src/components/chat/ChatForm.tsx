@@ -1,5 +1,4 @@
 import React from "react";
-import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "../ui/select";
 import { useChat } from "./use-chat";
 import { addMessage, createAssistantMessage, createUserMessage, db, newConversation } from "../../lib/db";
 import { getOllamaLastModel, setCurrentConversation, setOllamaLastModel } from "../../lib/storage";
@@ -9,137 +8,77 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { Button } from "../ui/button";
 import { ArrowUpIcon, PaperclipIcon } from "lucide-react";
 import { UUID } from "crypto";
+import { useModel } from "./use-model";
+import { ChatModelSelector } from "./ChatModelSelector";
 
-interface ModelsSelectorProps {
-    currentModel: string | undefined;
-    setCurrentModel: (model: string) => void;
-    models: string[];
-    isStreaming: boolean;
-}
-
-function ModelsSelector({ currentModel, setCurrentModel, models, isStreaming }: ModelsSelectorProps) {
-    return (
-        <Select disabled={isStreaming} value={currentModel ? currentModel : ""} onValueChange={setCurrentModel}>
-            <SelectTrigger className="w-[140px]">
-                <SelectValue placeholder="Select a model" />
-            </SelectTrigger>
-            <SelectContent>
-                <SelectGroup>
-                    <SelectLabel>Models</SelectLabel>
-                    {models.map(model => <SelectItem key={model} value={model}>{model}</SelectItem>)}
-                </SelectGroup>
-            </SelectContent>
-        </Select>
-    );
-}
-
-function useOllamaModels() {
-    const [models, setModels] = React.useState<string[]>([]);
-    const [currentModel, setCurrentModel] = React.useState<string | undefined>(undefined);
-    // Fetch all the models available
-    React.useEffect(() => {
-        let isMounted = true;
-        const fetchModels = async () => {
-            const responses = await ollama.list();
-            if (isMounted) {
-                const listModels = responses.models.map((modelResponse) => modelResponse.name);
-                setModels(listModels);
-            }
-        };
-        fetchModels().catch((error) => {
-            console.error("Failed to fetch the Ollama models:", error);
-        });
-        return () => { isMounted = false };
-    }, []);
-    // Set the currentModel
-    React.useEffect(() => {
-        if (models.length > 0) {
-            const lastModel = getOllamaLastModel();
-            // Retrieve the selected model during the last visit if available
-            // Othewise select the first one
-            if (lastModel && models.includes(lastModel))
-                setCurrentModel(lastModel);
-            else
-                setCurrentModel(models[0]);
-        }
-        else
-            console.log("failed to fetch the models");
-    }, [models]);
-    // If a currentModel is selected then local storage is updated
-    React.useEffect(() => {
-        if (currentModel)
-            setOllamaLastModel(currentModel);
-    }, [currentModel]);
-
-    return { models, currentModel, setCurrentModel }
-}
 
 
 export function ChatForm() {
     const fileInputRef = React.useRef<HTMLInputElement | null>(null);
     const [input, setInput] = React.useState<string>("");
-    const { models, currentModel, setCurrentModel } = useOllamaModels();
-    const { state, dispatch } = useChat();
+    // const { models, currentModel, setCurrentModel } = useOllamaModels();
+    const { chatState, chatDispatch } = useChat();
+    const { modelState } = useModel();
 
     const getCurrentConversationId = React.useCallback(async (): Promise<UUID> => {
         let currentConversationId;
-        if (state.conversationId === undefined) {
+        if (chatState.conversationId === undefined) {
             currentConversationId = await newConversation();
-            dispatch({ type: "SET_CONVERSATION", payload: currentConversationId });
+            chatDispatch({ type: "SET_CONVERSATION", payload: currentConversationId });
             setCurrentConversation(currentConversationId);
         } else {
-            if (await db.conversations.get(state.conversationId) !== undefined)
-                currentConversationId = state.conversationId;
+            if (await db.conversations.get(chatState.conversationId) !== undefined)
+                currentConversationId = chatState.conversationId;
             else {
                 currentConversationId = await newConversation();
-                dispatch({ type: "SET_CONVERSATION", payload: currentConversationId });
+                chatDispatch({ type: "SET_CONVERSATION", payload: currentConversationId });
                 setCurrentConversation(currentConversationId);
             }
         }
         return currentConversationId;
-    }, [state, dispatch]);
+    }, [chatState, chatDispatch]);
 
 
     const appendMessage = React.useCallback(async (message: string): Promise<boolean> => {
         // if there is no model selected or a message is currently displayed
         // then can't append a new message 
-        if (currentModel === undefined || state.isStreaming) return false;
+        if (modelState.currentModel === undefined || chatState.isStreaming) return false;
         try {
             const currentConversationId = await getCurrentConversationId();
-            dispatch({ type: "SET_STREAMING", payload: true });
+            chatDispatch({ type: "SET_STREAMING", payload: true });
             // Display the user message
             const userMessage = createUserMessage(message);
-            dispatch({ type: "ADD_MESSAGE", payload: userMessage });
+            chatDispatch({ type: "ADD_MESSAGE", payload: userMessage });
             await addMessage(currentConversationId, userMessage);
             // Display an empty message for the assistant
             let assistantId = crypto.randomUUID();
             const assistantMessage = createAssistantMessage("", assistantId);
-            dispatch({ type: "SET_ASSISTANT_ANSWER", payload: assistantMessage });
+            chatDispatch({ type: "SET_ASSISTANT_ANSWER", payload: assistantMessage });
             // Send the user message
             const response = await ollama.chat({
-                model: currentModel,
-                messages: [...state.messages, userMessage],
+                model: modelState.currentModel,
+                messages: [...chatState.messages, userMessage],
                 stream: true,
             });
             let accumulateContent = "";
             for await (const chunk of response) {
                 accumulateContent += chunk.message.content;
                 // Dispaly the assistant message currently streaming
-                dispatch({ type: "SET_ASSISTANT_ANSWER", payload: createAssistantMessage(accumulateContent, assistantId) });
+                chatDispatch({ type: "SET_ASSISTANT_ANSWER", payload: createAssistantMessage(accumulateContent, assistantId) });
             }
             // Update the messages
             const newMessage = createAssistantMessage(accumulateContent, assistantId);
-            dispatch({ type: "ADD_MESSAGE", payload: newMessage });
+            chatDispatch({ type: "ADD_MESSAGE", payload: newMessage });
             addMessage(currentConversationId, newMessage);
         } catch (error) {
             console.error("Failed to fetch assistant answer:", error);
         } finally {
             // Remove the streaming message
-            dispatch({ type: "SET_ASSISTANT_ANSWER", payload: undefined });
-            dispatch({ type: "SET_STREAMING", payload: false });
+            chatDispatch({ type: "SET_ASSISTANT_ANSWER", payload: undefined });
+            chatDispatch({ type: "SET_STREAMING", payload: false });
         }
         return true;
-    }, [state, dispatch, currentModel, getCurrentConversationId, input]);
+    }, [chatState, chatDispatch, modelState, getCurrentConversationId, input]);
 
     const submitMessage = React.useCallback(async () => {
         const oldInput = input;
@@ -175,7 +114,7 @@ export function ChatForm() {
         >
             <div className="flex w-full items-center">
                 <AutoResizeTextarea
-                    disabled={state.isStreaming}
+                    disabled={chatState.isStreaming}
                     onKeyDown={handleKeyDown}
                     onChange={(v) => { setInput(v) }}
                     value={input}
@@ -183,11 +122,11 @@ export function ChatForm() {
                     className="placeholder:text-muted-foreground flex-1 bg-transparent focus:outline-none"
                 />
                 <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" multiple />
-                <ModelsSelector currentModel={currentModel} setCurrentModel={setCurrentModel} models={models} isStreaming={state.isStreaming} />
+                <ChatModelSelector />
                 <Tooltip>
                     <TooltipTrigger asChild>
                         <Button
-                            disabled={state.isStreaming}
+                            disabled={chatState.isStreaming}
                             type="button"
                             variant="ghost"
                             size="sm"
@@ -201,7 +140,7 @@ export function ChatForm() {
                 </Tooltip>
                 <Tooltip>
                     <TooltipTrigger asChild>
-                        <Button disabled={state.isStreaming} variant="ghost" size="sm" className="size-6 rounded-full">
+                        <Button disabled={chatState.isStreaming} variant="ghost" size="sm" className="size-6 rounded-full">
                             <ArrowUpIcon size={16} />
                         </Button>
                     </TooltipTrigger>

@@ -20,8 +20,8 @@ interface ChatState {
 
 
 interface IChatContext {
-    state: ChatState;
-    dispatch: React.Dispatch<ChatAction>;
+    chatState: ChatState;
+    chatDispatch: React.Dispatch<ChatAction>;
 }
 
 export const ChatContext = React.createContext<IChatContext | undefined>(undefined);
