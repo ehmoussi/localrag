@@ -26,7 +26,10 @@ export function ChatModelSelector() {
             };
         };
         fetchModels();
-        return () => { isMounted = false };
+        return () => {
+            isMounted = false;
+            ollama.abort();
+        };
     }, [modelDispatch]);
 
     const setCurrentModel = React.useCallback((currentModel: string) => {
