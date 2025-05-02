@@ -79,7 +79,7 @@ export function ChatForm() {
             setStreaming(false);
         }
         return true;
-    }, [chatState, chatDispatch, modelState, getCurrentConversationId, input, isStreaming, setStreaming]);
+    }, [chatState, chatDispatch, modelState, getCurrentConversationId, isStreaming, setStreaming]);
 
     const submitMessage = React.useCallback(async () => {
         const oldInput = input;
@@ -87,7 +87,7 @@ export function ChatForm() {
         const isOk = await appendMessage(input);
         if (!isOk)
             setInput(oldInput);
-    }, [appendMessage]);
+    }, [appendMessage, input, setInput]);
 
     const handleSubmit = React.useCallback(async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
