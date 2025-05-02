@@ -1,8 +1,8 @@
 import React from "react";
 import { useChat } from "./use-chat";
-import { addMessage, createAssistantMessage, createUserMessage, db, newConversation } from "../../lib/db";
+import { addMessage, createAssistantMessage, createUserMessage, db, getConversationTitle, newConversation, updateConversationTitle } from "../../lib/db";
 import { setCurrentConversation } from "../../lib/storage";
-import ollama from 'ollama';
+import ollama, { Message } from 'ollama';
 import { AutoResizeTextarea } from "../../AutoResizeTextarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { Button } from "../ui/button";
@@ -14,6 +14,37 @@ import { useStreaming } from "./use-streaming";
 
 
 const BUFFER_STREAMING_SIZE: number = 40;
+
+async function generateConversationTitle(currentModel: string, messages: Message[]): Promise<string> {
+    try {
+        let conversationText = "";
+        messages.forEach(msg => {
+            conversationText += `${msg.role}: ${msg.content}\n\n`;
+        });
+        const prompt = (
+            "Based on the conversation below, generate a short, descriptive title (5 words or less). "
+            + "- Respond with ONLY the title text\n"
+            + "- No additional explanation\n"
+            + "- No quotes\n"
+            + "- Answer with the same language as the conversation.\n\n"
+            + conversationText + "\n\n"
+        );
+        console.log(prompt);
+        const response = await ollama.generate({
+            model: currentModel,
+            prompt: prompt,
+            stream: false, // TODO: replace by true
+            options: {
+                temperature: 0.3 // Lower for more consistent titles
+            }
+        });
+        const title = response.response.trim();//.replace(/^["']|["']$/g, '');
+        console.log(title);
+        return title;
+    } catch (error) {
+        return "New Conversation";
+    }
+}
 
 
 export function ChatForm() {
@@ -42,12 +73,8 @@ export function ChatForm() {
     }, [chatState, chatDispatch]);
 
 
-    const appendMessage = React.useCallback(async (currentConversationId: UUID, message: string, currentModel: string) => {
+    const streamAssistantMessage = React.useCallback(async (currentConversationId: UUID, userMessage: Message, currentModel: string) => {
         try {
-            // Display the user message
-            const userMessage = createUserMessage(currentConversationId, message);
-            chatDispatch({ type: "ADD_MESSAGE", payload: userMessage });
-            await addMessage(currentConversationId, userMessage);
             // Display an empty message for the assistant
             let assistantId = crypto.randomUUID();
             const assistantMessage = createAssistantMessage(currentConversationId, "", assistantId);
@@ -77,8 +104,13 @@ export function ChatForm() {
                 // Dispaly the assistant message currently streaming
                 chatDispatch({ type: "SET_ASSISTANT_ANSWER", payload: createAssistantMessage(currentConversationId, accumulateContent, assistantId) });
             }
-            // Update the messages
             const newMessage = createAssistantMessage(currentConversationId, accumulateContent, assistantId);
+            // Update the title
+            if (chatState.messages.length === 0) {
+                const title = await generateConversationTitle(currentModel, [userMessage, newMessage]);
+                await updateConversationTitle(currentConversationId, title);
+            }
+            // Update the messages
             chatDispatch({ type: "ADD_MESSAGE", payload: newMessage });
             addMessage(currentConversationId, newMessage);
         } catch (error) {
@@ -97,7 +129,11 @@ export function ChatForm() {
             const currentConversationId = await getCurrentConversationId();
             setInput("");
             setStreaming(true);
-            await appendMessage(currentConversationId, input, modelState.currentModel);
+            // Display the user message
+            const userMessage = createUserMessage(currentConversationId, input);
+            chatDispatch({ type: "ADD_MESSAGE", payload: userMessage });
+            await addMessage(currentConversationId, userMessage);
+            await streamAssistantMessage(currentConversationId, userMessage, modelState.currentModel);
             setStreaming(false);
         }
     };

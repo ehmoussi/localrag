@@ -34,7 +34,7 @@ export function ConversationHeader() {
 const ConversationItem = React.memo(({ conversation }: { conversation: Conversation }) => {
     const { chatState, chatDispatch } = useChat();
 
-    const selectConversation = React.useCallback(async (event: React.FormEvent<HTMLAnchorElement>) => {
+    const selectConversation = React.useCallback(async (event: React.MouseEvent<HTMLButtonElement>) => {
         event.preventDefault();
         const messages = await getMessages(conversation.id);
         chatDispatch({ type: "SET_MESSAGES", payload: messages });
@@ -49,13 +49,15 @@ const ConversationItem = React.memo(({ conversation }: { conversation: Conversat
     };
 
     const isSelected = conversation.id === chatState.conversationId;
-
+    const title = conversation.title !== "" ? conversation.title : "New Conversation";
     return (
         <SidebarMenuItem>
-            <SidebarMenuButton asChild isActive={isSelected}>
-                <a href="#" onClick={(e) => selectConversation(e)}>
-                    <span>{conversation.title !== "" ? conversation.title : "New Conversation"}</span>
-                </a>
+            <SidebarMenuButton
+                asChild
+                isActive={isSelected}
+                tooltip={title}
+                onClick={(e) => selectConversation(e)}>
+                <a href="#"><span>{title}</span></a>
             </SidebarMenuButton>
             <DropdownMenu>
                 <DropdownMenuTrigger asChild>

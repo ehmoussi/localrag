@@ -40,6 +40,22 @@ export async function newConversation(): Promise<UUID> {
     return conversation.id;
 }
 
+export async function updateConversationTitle(conversationId: UUID, title: string) {
+    try {
+        await db.transaction("rw", db.conversations, async () => {
+            await db.conversations.update(conversationId, { title: title });
+        });
+    } catch (error) {
+        console.error("Failed to update the title of the conversation:", error);
+    }
+}
+
+export async function getConversationTitle(conversationId: UUID): Promise<string> {
+    const conversation = await db.conversations.get(conversationId);
+    if (conversation === undefined) throw new Error(`Can't find a conversation with id=${conversationId}`);
+    return conversation.title;
+}
+
 export async function getMessages(conversationId: UUID): Promise<Message[]> {
     const conversation = await db.conversations.get(conversationId);
     if (conversation === undefined) throw new Error(`Can't find a conversation with id=${conversationId}`);
