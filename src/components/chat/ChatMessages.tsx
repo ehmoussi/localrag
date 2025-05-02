@@ -1,6 +1,7 @@
 import React from "react";
 import { Message } from "../../lib/db";
 import { useChat } from "./use-chat";
+import { UUID } from "crypto";
 
 function Header() {
     return (
@@ -24,7 +25,7 @@ const MessageComp = React.memo(function MessageComp({ message }: { message: Mess
     );
 });
 
-function AssistantMessage({ assistantAnswer }: { assistantAnswer: Message | undefined }) {
+function AssistantMessage({ assistantAnswer, conversationId }: { assistantAnswer: Message | undefined, conversationId: UUID | undefined }) {
     const bottomRef = React.useRef<HTMLDivElement | null>(null);
 
     React.useEffect(() => {
@@ -35,7 +36,7 @@ function AssistantMessage({ assistantAnswer }: { assistantAnswer: Message | unde
     return (
         <>
             {
-                assistantAnswer ? <MessageComp message={assistantAnswer} /> : undefined
+                assistantAnswer && assistantAnswer.conversationId == conversationId ? <MessageComp message={assistantAnswer} /> : undefined
             }
             <div ref={bottomRef}></div>
         </>
@@ -55,7 +56,7 @@ export function ChatMessages() {
                                 <MessageComp key={message.id} message={message} />
                             ))
                         }
-                        <AssistantMessage assistantAnswer={chatState.assistantAnswer} />
+                        <AssistantMessage assistantAnswer={chatState.assistantAnswer} conversationId={chatState.conversationId} />
                     </div> :
                     <Header />
             }

@@ -2,11 +2,12 @@ import { UUID } from 'crypto';
 import { Dexie, EntityTable } from 'dexie';
 
 
-
 export interface Message {
     id: UUID;
     role: string;
     content: string;
+    date: Date;
+    conversationId: UUID;
 }
 
 export interface Conversation {
@@ -57,20 +58,25 @@ export async function addMessage(conversationId: UUID, message: Message) {
     }
 }
 
-function createMessage(role: string, content: string, id: UUID | undefined = undefined): Message {
+function createMessage(conversationId: UUID, role: string, content: string, id: UUID | undefined = undefined, date: Date | undefined = undefined): Message {
     let messageId: UUID;
     if (id == undefined)
         messageId = crypto.randomUUID();
     else
         messageId = id;
-    return { id: messageId, role, content };
+    let messageDate;
+    if (date === undefined)
+        messageDate = new Date();
+    else
+        messageDate = date;
+    return { id: messageId, role, content, date: messageDate, conversationId };
 }
 
 
-export function createUserMessage(content: string, id: UUID | undefined = undefined): Message {
-    return createMessage("user", content, id);
+export function createUserMessage(conversationId: UUID, content: string, id: UUID | undefined = undefined, date: Date | undefined = undefined): Message {
+    return createMessage(conversationId, "user", content, id, date);
 }
 
-export function createAssistantMessage(content: string, id: UUID | undefined = undefined): Message {
-    return createMessage("assistant", content, id);
+export function createAssistantMessage(conversationId: UUID, content: string, id: UUID | undefined = undefined, date: Date | undefined = undefined): Message {
+    return createMessage(conversationId, "assistant", content, id, date);
 }

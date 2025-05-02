@@ -54,7 +54,7 @@ const ConversationItem = React.memo(({ conversation }: { conversation: Conversat
         <SidebarMenuItem>
             <SidebarMenuButton asChild isActive={isSelected}>
                 <a href="#" onClick={(e) => selectConversation(e)}>
-                    <span>{conversation.title ? conversation.title : "New Conversation"}</span>
+                    <span>{conversation.title !== "" ? conversation.title : "New Conversation"}</span>
                 </a>
             </SidebarMenuButton>
             <DropdownMenu>

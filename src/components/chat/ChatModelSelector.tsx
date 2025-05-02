@@ -1,5 +1,4 @@
 import React from "react";
-import { useChat } from "./use-chat";
 import { useModel } from "./use-model";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "../ui/select";
 import ollama from 'ollama';

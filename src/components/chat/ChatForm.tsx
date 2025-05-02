@@ -13,6 +13,8 @@ import { ChatModelSelector } from "./ChatModelSelector";
 import { useStreaming } from "./use-streaming";
 
 
+const BUFFER_STREAMING_SIZE: number = 40;
+
 
 export function ChatForm() {
     const fileInputRef = React.useRef<HTMLInputElement | null>(null);
@@ -48,12 +50,12 @@ export function ChatForm() {
             const currentConversationId = await getCurrentConversationId();
             setStreaming(true);
             // Display the user message
-            const userMessage = createUserMessage(message);
+            const userMessage = createUserMessage(currentConversationId, message);
             chatDispatch({ type: "ADD_MESSAGE", payload: userMessage });
             await addMessage(currentConversationId, userMessage);
             // Display an empty message for the assistant
             let assistantId = crypto.randomUUID();
-            const assistantMessage = createAssistantMessage("", assistantId);
+            const assistantMessage = createAssistantMessage(currentConversationId, "", assistantId);
             chatDispatch({ type: "SET_ASSISTANT_ANSWER", payload: assistantMessage });
             // Send the user message
             const response = await ollama.chat({
@@ -62,13 +64,26 @@ export function ChatForm() {
                 stream: true,
             });
             let accumulateContent = "";
+            let buffer = "";
             for await (const chunk of response) {
-                accumulateContent += chunk.message.content;
+                buffer += chunk.message.content;
                 // Dispaly the assistant message currently streaming
-                chatDispatch({ type: "SET_ASSISTANT_ANSWER", payload: createAssistantMessage(accumulateContent, assistantId) });
+                if (buffer.length > BUFFER_STREAMING_SIZE) {
+                    accumulateContent += buffer;
+                    chatDispatch({
+                        type: "SET_ASSISTANT_ANSWER",
+                        payload: createAssistantMessage(currentConversationId, accumulateContent, assistantId)
+                    });
+                    buffer = "";
+                }
+            }
+            if (buffer.length > 0) {
+                accumulateContent += buffer;
+                // Dispaly the assistant message currently streaming
+                chatDispatch({ type: "SET_ASSISTANT_ANSWER", payload: createAssistantMessage(currentConversationId, accumulateContent, assistantId) });
             }
             // Update the messages
-            const newMessage = createAssistantMessage(accumulateContent, assistantId);
+            const newMessage = createAssistantMessage(currentConversationId, accumulateContent, assistantId);
             chatDispatch({ type: "ADD_MESSAGE", payload: newMessage });
             addMessage(currentConversationId, newMessage);
         } catch (error) {
