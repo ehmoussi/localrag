@@ -98,10 +98,12 @@ export function ChatForm() {
 
     const submitMessage = React.useCallback(async () => {
         const oldInput = input;
-        setInput("");
-        const isOk = await appendMessage(input);
-        if (!isOk)
-            setInput(oldInput);
+        if (input !== "") {
+            setInput("");
+            const isOk = await appendMessage(input);
+            if (!isOk)
+                setInput(oldInput);
+        }
     }, [appendMessage, input, setInput]);
 
     const handleSubmit = React.useCallback(async (e: React.FormEvent<HTMLFormElement>) => {
