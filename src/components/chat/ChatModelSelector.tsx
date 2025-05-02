@@ -4,25 +4,29 @@ import { useModel } from "./use-model";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "../ui/select";
 import ollama from 'ollama';
 import { getOllamaLastModel, setOllamaLastModel } from "@/lib/storage";
+import { useStreaming } from "./use-streaming";
 
 
 export function ChatModelSelector() {
-    const { chatState } = useChat();
+    const { isStreaming } = useStreaming();
     const { modelState, modelDispatch } = useModel();
 
     // Fetch all the models available
     React.useEffect(() => {
         let isMounted = true;
         const fetchModels = async () => {
-            const responses = await ollama.list();
-            if (isMounted) {
-                const models = responses.models.map((modelResponse) => modelResponse.name);
-                modelDispatch({ type: "SET_MODELS", payload: models });
-            }
+            try {
+                const responses = await ollama.list();
+                if (isMounted) {
+                    const models = responses.models.map((modelResponse) => modelResponse.name);
+                    modelDispatch({ type: "SET_MODELS", payload: models });
+                }
+            } catch (error) {
+                if (isMounted)
+                    console.error("Failed to fetch the Ollama models:", error);
+            };
         };
-        fetchModels().catch((error) => {
-            console.error("Failed to fetch the Ollama models:", error);
-        });
+        fetchModels();
         return () => { isMounted = false };
     }, [modelDispatch]);
 
@@ -48,7 +52,7 @@ export function ChatModelSelector() {
 
     return (
         <Select
-            disabled={chatState.isStreaming}
+            disabled={isStreaming}
             value={modelState.currentModel ? modelState.currentModel : ""}
             onValueChange={setCurrentModel}>
             <SelectTrigger className="w-[140px]">

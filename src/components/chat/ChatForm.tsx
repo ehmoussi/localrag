@@ -1,7 +1,7 @@
 import React from "react";
 import { useChat } from "./use-chat";
 import { addMessage, createAssistantMessage, createUserMessage, db, newConversation } from "../../lib/db";
-import { getOllamaLastModel, setCurrentConversation, setOllamaLastModel } from "../../lib/storage";
+import { setCurrentConversation } from "../../lib/storage";
 import ollama from 'ollama';
 import { AutoResizeTextarea } from "../../AutoResizeTextarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
@@ -10,14 +10,15 @@ import { ArrowUpIcon, PaperclipIcon } from "lucide-react";
 import { UUID } from "crypto";
 import { useModel } from "./use-model";
 import { ChatModelSelector } from "./ChatModelSelector";
+import { useStreaming } from "./use-streaming";
 
 
 
 export function ChatForm() {
     const fileInputRef = React.useRef<HTMLInputElement | null>(null);
     const [input, setInput] = React.useState<string>("");
-    // const { models, currentModel, setCurrentModel } = useOllamaModels();
     const { chatState, chatDispatch } = useChat();
+    const { isStreaming, setStreaming } = useStreaming();
     const { modelState } = useModel();
 
     const getCurrentConversationId = React.useCallback(async (): Promise<UUID> => {
@@ -42,10 +43,10 @@ export function ChatForm() {
     const appendMessage = React.useCallback(async (message: string): Promise<boolean> => {
         // if there is no model selected or a message is currently displayed
         // then can't append a new message 
-        if (modelState.currentModel === undefined || chatState.isStreaming) return false;
+        if (modelState.currentModel === undefined || isStreaming) return false;
         try {
             const currentConversationId = await getCurrentConversationId();
-            chatDispatch({ type: "SET_STREAMING", payload: true });
+            setStreaming(true);
             // Display the user message
             const userMessage = createUserMessage(message);
             chatDispatch({ type: "ADD_MESSAGE", payload: userMessage });
@@ -75,10 +76,10 @@ export function ChatForm() {
         } finally {
             // Remove the streaming message
             chatDispatch({ type: "SET_ASSISTANT_ANSWER", payload: undefined });
-            chatDispatch({ type: "SET_STREAMING", payload: false });
+            setStreaming(false);
         }
         return true;
-    }, [chatState, chatDispatch, modelState, getCurrentConversationId, input]);
+    }, [chatState, chatDispatch, modelState, getCurrentConversationId, input, isStreaming, setStreaming]);
 
     const submitMessage = React.useCallback(async () => {
         const oldInput = input;
@@ -114,7 +115,7 @@ export function ChatForm() {
         >
             <div className="flex w-full items-center">
                 <AutoResizeTextarea
-                    disabled={chatState.isStreaming}
+                    disabled={isStreaming}
                     onKeyDown={handleKeyDown}
                     onChange={(v) => { setInput(v) }}
                     value={input}
@@ -126,7 +127,7 @@ export function ChatForm() {
                 <Tooltip>
                     <TooltipTrigger asChild>
                         <Button
-                            disabled={chatState.isStreaming}
+                            disabled={isStreaming}
                             type="button"
                             variant="ghost"
                             size="sm"
@@ -140,7 +141,7 @@ export function ChatForm() {
                 </Tooltip>
                 <Tooltip>
                     <TooltipTrigger asChild>
-                        <Button disabled={chatState.isStreaming} variant="ghost" size="sm" className="size-6 rounded-full">
+                        <Button disabled={isStreaming} variant="ghost" size="sm" className="size-6 rounded-full">
                             <ArrowUpIcon size={16} />
                         </Button>
                     </TooltipTrigger>
