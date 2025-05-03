@@ -2,45 +2,95 @@ import { UUID } from 'crypto';
 import { Dexie, EntityTable } from 'dexie';
 
 
-export interface Message {
-    id: UUID;
-    role: string;
-    content: string;
-    date: Date;
-    conversationId: UUID;
-}
+export type ConversationID = UUID;
+type UserMessageID = UUID;
+type AssistantMessageID = UUID;
+type MessageID = UserMessageID | AssistantMessageID;
+type Role = 'user' | 'assistant';
 
 export interface Conversation {
-    id: UUID;
+    id: ConversationID;
     title: string;
     startDate: Date;
-    messages: Message[];
+    userMessageIds: UserMessageID[];
+    lastMessageId: MessageID | undefined;
 }
 
-export const db = new Dexie("LocalRAG") as Dexie & {
+interface UserMessage {
+    id: UserMessageID;
+    role: Role;
+    content: string;
+    date: Date;
+    conversationId: ConversationID;
+    isActive: boolean;
+    answerMessageId: AssistantMessageID | undefined;
+}
+
+interface AssistantMessage {
+    id: AssistantMessageID;
+    role: Role;
+    content: string;
+    date: Date;
+    conversationId: ConversationID;
+    parentId: UserMessageID;
+    nextMessageIds: UserMessageID[];
+}
+
+export interface Message {
+    id: MessageID;
+    role: Role;
+    content: string;
+    date: Date;
+    conversationId: ConversationID;
+}
+
+
+const db = new Dexie("LocalRAG") as Dexie & {
     conversations: EntityTable<Conversation, 'id'>;
+    userMessages: EntityTable<UserMessage, 'id'>;
+    assistantMessages: EntityTable<AssistantMessage, 'id'>;
 };
 
 db.version(1).stores({
-    conversations: "id, *messages"
+    conversations: "id, startDate, *userMessageIds",
+    userMessages: "id, date, conversationId, isActive, answerMessageId",
+    assistantMessages: "id, date, conversationId, *nextMessageIds",
 });
 
+function isUserMessage(message: Message): message is UserMessage {
+    return message.role === "user";
+}
+
+function isAssistantMessage(message: Message): message is AssistantMessage {
+    return message.role === "assistant";
+}
+
+export async function getConversation(conversationId: ConversationID): Promise<Conversation | undefined> {
+    return await db.conversations.get(conversationId);
+}
+
+async function getConversationWithError(conversationId: ConversationID): Promise<Conversation> {
+    const conversation = await db.conversations.get(conversationId);
+    if (conversation === undefined) throw new Error(`Can't find a conversation with id=${conversationId}`);
+    return conversation;
+}
 
 export async function getConversations(): Promise<Conversation[]> {
     return await db.conversations.toCollection().sortBy("startDate");
 }
 
-export async function newConversation(): Promise<UUID> {
+export async function newConversation(): Promise<ConversationID> {
     const id = crypto.randomUUID();
-    const messages: Message[] = [];
+    const userMessageIds: UserMessageID[] = [];
     const title = "New Conversation";
     const startDate = new Date();
-    const conversation = { id, title, startDate, messages };
+    const lastMessageId = undefined;
+    const conversation = { id, title, startDate, userMessageIds, lastMessageId };
     await db.conversations.add(conversation);
     return conversation.id;
 }
 
-export async function updateConversationTitle(conversationId: UUID, title: string) {
+export async function updateConversationTitle(conversationId: ConversationID, title: string) {
     try {
         await db.transaction("rw", db.conversations, async () => {
             await db.conversations.update(conversationId, { title: title });
@@ -50,32 +100,113 @@ export async function updateConversationTitle(conversationId: UUID, title: strin
     }
 }
 
-export async function getConversationTitle(conversationId: UUID): Promise<string> {
-    const conversation = await db.conversations.get(conversationId);
-    if (conversation === undefined) throw new Error(`Can't find a conversation with id=${conversationId}`);
-    return conversation.title;
-}
-
-export async function getMessages(conversationId: UUID): Promise<Message[]> {
-    const conversation = await db.conversations.get(conversationId);
-    if (conversation === undefined) throw new Error(`Can't find a conversation with id=${conversationId}`);
-    return conversation.messages.filter((m): m is Message => m !== undefined);
+export async function getConversationTitle(conversationId: ConversationID): Promise<string> {
+    return (await getConversationWithError(conversationId)).title;
 }
 
 
-export async function addMessage(conversationId: UUID, message: Message) {
+export async function deleteConversation(conversationId: ConversationID) {
+    await db.transaction("rw", db.conversations, db.userMessages, db.assistantMessages, async () => {
+        await db.userMessages.where("conversationId").equals(conversationId).delete();
+        await db.assistantMessages.where("conversationId").equals(conversationId).delete();
+        await db.conversations.delete(conversationId);
+    });
+}
+
+
+async function findActiveUserMessage(userMessageIds: UserMessageID[]): Promise<UserMessage | undefined> {
+    for (const userMessageId of userMessageIds) {
+        const userMessage = await db.userMessages.get(userMessageId);
+        if (userMessage !== undefined && userMessage.isActive) return userMessage;
+    }
+}
+
+export async function getMessages(conversationId: ConversationID): Promise<Message[]> {
+    const conversation = await getConversationWithError(conversationId);
+    let messages: Message[] = [];
+    let currentUserMessage = await findActiveUserMessage(conversation.userMessageIds);
+    while (currentUserMessage !== undefined) {
+        messages.push(currentUserMessage);
+        const currentAnswerMessage = (
+            (currentUserMessage.answerMessageId !== undefined) ?
+                await db.assistantMessages.get(currentUserMessage.answerMessageId)
+                : undefined
+        );
+        if (currentAnswerMessage !== undefined) {
+            messages.push(currentAnswerMessage);
+            currentUserMessage = await findActiveUserMessage(currentAnswerMessage.nextMessageIds);
+        } else {
+            currentUserMessage = undefined;
+        }
+    }
+    return messages;
+}
+
+
+async function addInitialMessage(conversation: Conversation, message: Message) {
+    if (isUserMessage(message)) {
+        await db.conversations.update(
+            conversation.id,
+            {
+                userMessageIds: [...conversation.userMessageIds, message.id],
+                lastMessageId: message.id
+            }
+        );
+        await db.userMessages.add({ ...message, isActive: true });
+    }
+    else
+        throw new Error(`Can't start a conversation with a "${message.role}" message`);
+}
+
+async function addAssistantMessage(conversation: Conversation, lastMessageId: MessageID, message: AssistantMessage) {
+    const lastUserMessage = await db.userMessages.get(lastMessageId);
+    if (lastUserMessage !== undefined) {
+        await db.userMessages.update(lastMessageId, { answerMessageId: message.id });
+        await db.conversations.update(conversation.id, { lastMessageId: message.id });
+        await db.assistantMessages.add({ ...message, parentId: lastUserMessage.id });
+    } else {
+        throw new Error(`Can't find the last message "${lastMessageId}" in the user messages`);
+    }
+}
+
+async function addUserMessage(conversation: Conversation, lastMessageId: MessageID, message: UserMessage) {
+    const lastAssistantMessage = await db.assistantMessages.get(lastMessageId);
+    if (lastAssistantMessage !== undefined) {
+        await db.assistantMessages.update(lastMessageId, { nextMessageIds: [...lastAssistantMessage.nextMessageIds, message.id] });
+        await db.conversations.update(conversation.id, { lastMessageId: message.id });
+        await db.userMessages.add({ ...message, isActive: true });
+    } else {
+        throw new Error(`Can't find the last message "${lastMessageId}" in the assistant messages`);
+    }
+}
+
+export async function addMessage(conversationId: ConversationID, message: Message) {
     try {
-        await db.transaction("rw", db.conversations, async () => {
-            const oldMessages = await getMessages(conversationId);
-            await db.conversations.update(conversationId, { messages: [...oldMessages, message] });
+        await db.transaction("rw", db.conversations, db.userMessages, db.assistantMessages, async () => {
+            const conversation = await getConversationWithError(conversationId);
+            if (conversation.lastMessageId === undefined) {
+                await addInitialMessage(conversation, message);
+            } else if (isAssistantMessage(message)) {
+                await addAssistantMessage(conversation, conversation.lastMessageId, message);
+            } else if (isUserMessage(message)) {
+                await addUserMessage(conversation, conversation.lastMessageId, message);
+            } else {
+                throw new Error(`The given message has an unknow role: ${message.role}`);
+            }
         });
     } catch (error) {
         console.error("Failed to save into the db:", error);
     }
 }
 
-function createMessage(conversationId: UUID, role: string, content: string, id: UUID | undefined = undefined, date: Date | undefined = undefined): Message {
-    let messageId: UUID;
+function createMessage(
+    conversationId: ConversationID,
+    role: Role,
+    content: string,
+    id: MessageID | undefined = undefined,
+    date: Date | undefined = undefined
+): Message {
+    let messageId: MessageID;
     if (id == undefined)
         messageId = crypto.randomUUID();
     else
@@ -89,10 +220,29 @@ function createMessage(conversationId: UUID, role: string, content: string, id: 
 }
 
 
-export function createUserMessage(conversationId: UUID, content: string, id: UUID | undefined = undefined, date: Date | undefined = undefined): Message {
-    return createMessage(conversationId, "user", content, id, date);
+export function createUserMessage(
+    conversationId: ConversationID,
+    content: string,
+    id: UserMessageID | undefined = undefined,
+    date: Date | undefined = undefined,
+): UserMessage {
+    return {
+        ...createMessage(conversationId, "user", content, id, date),
+        isActive: false,
+        answerMessageId: undefined
+    };
 }
 
-export function createAssistantMessage(conversationId: UUID, content: string, id: UUID | undefined = undefined, date: Date | undefined = undefined): Message {
-    return createMessage(conversationId, "assistant", content, id, date);
+export function createAssistantMessage(
+    conversationId: ConversationID,
+    content: string,
+    parentId: UserMessageID,
+    id: AssistantMessageID | undefined = undefined,
+    date: Date | undefined = undefined,
+): AssistantMessage {
+    return {
+        ...createMessage(conversationId, "assistant", content, id, date),
+        parentId,
+        nextMessageIds: []
+    };
 }

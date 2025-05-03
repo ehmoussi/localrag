@@ -1,7 +1,6 @@
 import React from "react";
-import { Message } from "../../lib/db";
+import { ConversationID, Message } from "../../lib/db";
 import { useChat } from "./use-chat";
-import { UUID } from "crypto";
 
 function Header() {
     return (
@@ -25,7 +24,7 @@ const MessageComp = React.memo(function MessageComp({ message }: { message: Mess
     );
 });
 
-function AssistantMessage({ assistantAnswer, conversationId }: { assistantAnswer: Message | undefined, conversationId: UUID | undefined }) {
+function AssistantMessage({ assistantAnswer, conversationId }: { assistantAnswer: Message | undefined, conversationId: ConversationID | undefined }) {
     const bottomRef = React.useRef<HTMLDivElement | null>(null);
 
     React.useEffect(() => {

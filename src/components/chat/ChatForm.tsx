@@ -1,13 +1,12 @@
 import React from "react";
 import { useChat } from "./use-chat";
-import { addMessage, createAssistantMessage, createUserMessage, db, getConversationTitle, newConversation, updateConversationTitle } from "../../lib/db";
+import { addMessage, ConversationID, createAssistantMessage, createUserMessage, getConversation, newConversation, updateConversationTitle } from "../../lib/db";
 import { setCurrentConversation } from "../../lib/storage";
 import ollama, { Message } from 'ollama';
 import { AutoResizeTextarea } from "../../AutoResizeTextarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { Button } from "../ui/button";
 import { ArrowUpIcon, PaperclipIcon } from "lucide-react";
-import { UUID } from "crypto";
 import { useModel } from "./use-model";
 import { ChatModelSelector } from "./ChatModelSelector";
 import { useStreaming } from "./use-streaming";
@@ -54,14 +53,14 @@ export function ChatForm() {
     const { isStreaming, setStreaming } = useStreaming();
     const { modelState } = useModel();
 
-    const getCurrentConversationId = React.useCallback(async (): Promise<UUID> => {
+    const getCurrentConversationId = React.useCallback(async (): Promise<ConversationID> => {
         let currentConversationId;
         if (chatState.conversationId === undefined) {
             currentConversationId = await newConversation();
             chatDispatch({ type: "SET_CONVERSATION", payload: currentConversationId });
             setCurrentConversation(currentConversationId);
         } else {
-            if (await db.conversations.get(chatState.conversationId) !== undefined)
+            if (await getConversation(chatState.conversationId) !== undefined)
                 currentConversationId = chatState.conversationId;
             else {
                 currentConversationId = await newConversation();
@@ -73,7 +72,7 @@ export function ChatForm() {
     }, [chatState, chatDispatch]);
 
 
-    const streamAssistantMessage = React.useCallback(async (currentConversationId: UUID, userMessage: Message, currentModel: string) => {
+    const streamAssistantMessage = React.useCallback(async (currentConversationId: ConversationID, userMessage: Message, currentModel: string) => {
         try {
             // Display an empty message for the assistant
             let assistantId = crypto.randomUUID();

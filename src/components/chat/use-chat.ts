@@ -1,17 +1,16 @@
-import { UUID } from "crypto";
-import { Message } from "../../lib/db";
+import { ConversationID, Message } from "../../lib/db";
 import React from "react";
 
 
 type ChatAction =
-    | { type: "SET_CONVERSATION", payload: UUID | undefined }
+    | { type: "SET_CONVERSATION", payload: ConversationID | undefined }
     | { type: "SET_MESSAGES", payload: Message[] }
     | { type: "ADD_MESSAGE", payload: Message }
     | { type: "SET_ASSISTANT_ANSWER", payload: Message | undefined }
 
 
 interface ChatState {
-    conversationId: UUID | undefined;
+    conversationId: ConversationID | undefined;
     messages: Message[];
     assistantAnswer: Message | undefined;
 }

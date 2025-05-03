@@ -1,7 +1,7 @@
 import { SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuAction, SidebarMenuButton, SidebarMenuItem } from "@/components/ui/sidebar"
 import { useLiveQuery } from "dexie-react-hooks";
 import { MoreHorizontal, SquarePen, Trash } from "lucide-react";
-import { Conversation, db, getConversations, getMessages, newConversation } from "./lib/db";
+import { Conversation, deleteConversation, getConversations, getMessages, newConversation } from "./lib/db";
 import React from "react";
 import { useChat } from "./components/chat/use-chat";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./components/ui/dropdown-menu";
@@ -34,16 +34,16 @@ export function ConversationHeader() {
 const ConversationItem = React.memo(({ conversation }: { conversation: Conversation }) => {
     const { chatState, chatDispatch } = useChat();
 
-    const selectConversation = React.useCallback(async (event: React.MouseEvent<HTMLButtonElement>) => {
+    const conversationClicked = React.useCallback(async (event: React.MouseEvent<HTMLButtonElement>) => {
         event.preventDefault();
         const messages = await getMessages(conversation.id);
         chatDispatch({ type: "SET_MESSAGES", payload: messages });
         chatDispatch({ type: "SET_CONVERSATION", payload: conversation.id });
     }, [chatDispatch]);
 
-    const deleteConversation = async (event: React.FormEvent<HTMLDivElement>) => {
+    const deleteClicked = async (event: React.FormEvent<HTMLDivElement>) => {
         event.preventDefault();
-        await db.conversations.delete(conversation.id);
+        await deleteConversation(conversation.id);
         chatDispatch({ type: "SET_MESSAGES", payload: [] });
         chatDispatch({ type: "SET_CONVERSATION", payload: undefined });
     };
@@ -56,7 +56,7 @@ const ConversationItem = React.memo(({ conversation }: { conversation: Conversat
                 asChild
                 isActive={isSelected}
                 tooltip={title}
-                onClick={(e) => selectConversation(e)}>
+                onClick={(e) => conversationClicked(e)}>
                 <a href="#"><span>{title}</span></a>
             </SidebarMenuButton>
             <DropdownMenu>
@@ -66,7 +66,7 @@ const ConversationItem = React.memo(({ conversation }: { conversation: Conversat
                     </SidebarMenuAction>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent side="right" align="start">
-                    <DropdownMenuItem onClick={deleteConversation}>
+                    <DropdownMenuItem onClick={deleteClicked}>
                         <Trash />
                         <span>Delete</span>
                     </DropdownMenuItem>
