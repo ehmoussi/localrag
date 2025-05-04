@@ -16,9 +16,9 @@ function App() {
                 <AppSideBar />
                 <SidebarTrigger />
                 <main className="ring-none mx-auto flex h-svh max-h-svh w-full max-w-[45rem] flex-col items-stretch border-none">
-                    <ChatMessages />
                     <StreamingProvider>
                         <ModelProvider>
+                            <ChatMessages />
                             <TooltipProvider>
                                 <ChatForm />
                             </TooltipProvider>

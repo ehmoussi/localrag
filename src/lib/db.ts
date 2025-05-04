@@ -144,9 +144,12 @@ export async function getMessages(conversationId: ConversationID): Promise<Messa
 }
 
 
-async function insertUserMessage(conversation: Conversation, lastMessageId: AssistantMessageID | undefined, message: Message) {
+async function insertUserMessage(conversation: Conversation, lastMessageId: AssistantMessageID | undefined, message: Message): Promise<UserMessage | undefined> {
+    let userMessage: UserMessage | undefined;
     await db.transaction("rw", db.conversations, db.userMessages, db.assistantMessages, async () => {
+        let activeMessage: UserMessage | undefined;
         if (lastMessageId === undefined) {
+            activeMessage = await findActiveUserMessage(conversation.userMessageIds);
             conversation.userMessageIds.push(message.id);
             await db.conversations.update(
                 conversation.id,
@@ -158,6 +161,7 @@ async function insertUserMessage(conversation: Conversation, lastMessageId: Assi
         } else {
             const lastAssistantMessage = await db.assistantMessages.get(lastMessageId);
             if (lastAssistantMessage !== undefined) {
+                activeMessage = await findActiveUserMessage(lastAssistantMessage.nextMessageIds);
                 lastAssistantMessage.nextMessageIds.push(message.id);
                 await db.assistantMessages.update(lastMessageId, { nextMessageIds: lastAssistantMessage.nextMessageIds });
                 await db.conversations.update(conversation.id, { lastMessageId: message.id });
@@ -166,9 +170,13 @@ async function insertUserMessage(conversation: Conversation, lastMessageId: Assi
                 throw new Error(`Can't find the last message "${lastMessageId}" in the assistant messages`);
             }
         }
-        const userMessage = createUserMessage(message.conversationId, message.content, lastMessageId, true, message.id, message.date);
+        if (activeMessage !== undefined) {
+            db.userMessages.update(activeMessage.id, { isActive: false });
+        }
+        userMessage = createUserMessage(message.conversationId, message.content, lastMessageId, true, message.id, message.date);
         await db.userMessages.add(userMessage);
     });
+    return userMessage;
 }
 
 export async function addUserMessage(conversationId: ConversationID, message: Message) {
@@ -199,13 +207,14 @@ export async function addAssistantMessage(conversationId: ConversationID, messag
 
 
 
-async function editMessage(conversationId: ConversationID, editedMessageId: UserMessageID, content: string) {
+export async function editMessage(conversationId: ConversationID, editedMessageId: UserMessageID, content: string): Promise<UserMessage | undefined> {
+    let userMessage: UserMessage | undefined;
     await db.transaction("rw", db.conversations, db.userMessages, db.assistantMessages, async () => {
         const conversation = await getConversationWithError(conversationId);
         const editedMessage = await db.userMessages.get(editedMessageId);
         if (editedMessage !== undefined) {
             const parentId = editedMessage.parentId;
-            insertUserMessage(conversation, parentId, createMessage(conversationId, "user", content));
+            userMessage = await insertUserMessage(conversation, parentId, createMessage(conversationId, "user", content));
             // const userMessage = createUserMessage(conversationId, content, parentId, false);
             // // Set the editedMessage to inactive
             // await db.userMessages.update(editedMessageId, { isActive: false });
@@ -225,6 +234,7 @@ async function editMessage(conversationId: ConversationID, editedMessageId: User
             throw new Error(`Can't edit the message because the id "${editedMessageId}" is not available`);
         }
     });
+    return userMessage;
 }
 
 export function createMessage(

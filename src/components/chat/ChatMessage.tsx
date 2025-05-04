@@ -1,8 +1,11 @@
 import { AutoResizeTextarea } from "@/AutoResizeTextarea";
-import { Message } from "@/lib/db";
+import { addAssistantMessage, editMessage, getMessages, Message } from "@/lib/db";
 import React from "react";
 import { Button } from "../ui/button";
 import { Copy, Pencil } from "lucide-react";
+import { useAssistantStreaming } from "./use-assistantstreaming";
+import { useModel } from "./use-model";
+import { useChat } from "./use-chat";
 
 
 export function AssistantMessage({ message }: { message: Message }) {
@@ -82,15 +85,47 @@ function UserMessageDisplay({ message, onClickEdit }: { message: Message, onClic
 
 function UserMessageEditing({ message, setIsEditing }: { message: Message, setIsEditing: (isEditing: boolean) => void }) {
     const [input, setInput] = React.useState(message.content);
+    const { chatDispatch } = useChat();
+    const { streamAssistantMessage } = useAssistantStreaming();
+    const { modelState } = useModel();
 
-    function handleSubmission() {
+    async function submitMessage() {
         // TODO: add the editing of the message
+        setIsEditing(false);
+        if (modelState.currentModel !== undefined) {
+            const userMessage = await editMessage(message.conversationId, message.id, input);
+            if (userMessage !== undefined) {
+                // Update the messages because the children of the user message are not the same anymore
+                const newMessages = await getMessages(message.conversationId);
+                chatDispatch({ type: "SET_MESSAGES", payload: newMessages });
+                const assistantMessage = await streamAssistantMessage(message.conversationId, userMessage, modelState.currentModel);
+                if (assistantMessage !== undefined) {
+                    // Update the last message
+                    addAssistantMessage(userMessage.conversationId, assistantMessage);
+                    chatDispatch({ type: "ADD_MESSAGE", payload: assistantMessage });
+                }
+            } else {
+                console.error("Failed to create the user message");
+            }
+        } else {
+            console.error("No model have been selected");
+        }
+    }
+
+    function handleCancel() {
+        setInput(message.content);
         setIsEditing(false);
     }
 
-    function cancelSubmission() {
-        setInput(message.content);
-        setIsEditing(false);
+    function handleSubmit(e: React.FormEvent<HTMLButtonElement>) {
+        e.preventDefault();
+        submitMessage();
+    }
+
+    function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+        if (e.ctrlKey && e.key == "Enter") {
+            submitMessage();
+        }
     }
 
     return (
@@ -98,7 +133,7 @@ function UserMessageEditing({ message, setIsEditing }: { message: Message, setIs
             <div>
                 <div className="flex w-full items-center">
                     <AutoResizeTextarea
-                        onKeyDown={handleSubmission}
+                        onKeyDown={handleKeyDown}
                         onChange={(v) => { setInput(v) }}
                         value={input}
                         placeholder="Enter a message"
@@ -108,13 +143,13 @@ function UserMessageEditing({ message, setIsEditing }: { message: Message, setIs
                 <div className="flex justify-end gap-2 mt-2">
                     <Button
                         variant="ghost"
-                        onClick={cancelSubmission}
+                        onClick={handleCancel}
                         className="text-sm px-3 py-1 h-auto"
                     >
                         Cancel
                     </Button>
                     <Button
-                        onClick={handleSubmission}
+                        onClick={handleSubmit}
                         className="bg-blue-500 text-sm hover:bg-black text-white px-3 py-1 h-auto"
                     >
                         Submit
@@ -124,3 +159,5 @@ function UserMessageEditing({ message, setIsEditing }: { message: Message, setIs
         </div>
     );
 }
+
+
