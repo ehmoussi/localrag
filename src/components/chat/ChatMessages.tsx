@@ -1,6 +1,7 @@
 import React from "react";
 import { ConversationID, Message } from "../../lib/db";
 import { useChat } from "./use-chat";
+import { AssistantMessage, UserMessage } from "./ChatMessage";
 
 function Header() {
     return (
@@ -14,17 +15,14 @@ function Header() {
 }
 
 const MessageComp = React.memo(function MessageComp({ message }: { message: Message }) {
-    return (
-        <div
-            data-role={message.role}
-            className="max-w-[80%] rounded-xl px-3 py-2 text-sm whitespace-pre-line data-[role=assistant]:self-start data-[role=user]:self-end data-[role=assistant]:bg-gray-100 data-[role=user]:bg-blue-500 data-[role=assistant]:text-black data-[role=user]:text-white"
-        >
-            {message.content}
-        </div>
-    );
+    if (message.role == "user")
+        return <UserMessage message={message} />
+    else
+        return <AssistantMessage message={message} />
 });
 
-function AssistantMessage({ assistantAnswer, conversationId }: { assistantAnswer: Message | undefined, conversationId: ConversationID | undefined }) {
+
+function AnswerMessage({ assistantAnswer, conversationId }: { assistantAnswer: Message | undefined, conversationId: ConversationID | undefined }) {
     const bottomRef = React.useRef<HTMLDivElement | null>(null);
 
     React.useEffect(() => {
@@ -35,7 +33,7 @@ function AssistantMessage({ assistantAnswer, conversationId }: { assistantAnswer
     return (
         <>
             {
-                assistantAnswer && assistantAnswer.conversationId == conversationId ? <MessageComp message={assistantAnswer} /> : undefined
+                assistantAnswer && assistantAnswer.conversationId == conversationId ? <AssistantMessage message={assistantAnswer} /> : undefined
             }
             <div ref={bottomRef}></div>
         </>
@@ -55,7 +53,7 @@ export function ChatMessages() {
                                 <MessageComp key={message.id} message={message} />
                             ))
                         }
-                        <AssistantMessage assistantAnswer={chatState.assistantAnswer} conversationId={chatState.conversationId} />
+                        <AnswerMessage assistantAnswer={chatState.assistantAnswer} conversationId={chatState.conversationId} />
                     </div> :
                     <Header />
             }
