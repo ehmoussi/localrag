@@ -1,8 +1,8 @@
 import React from "react";
 import { useChat } from "./use-chat";
-import { addMessage, ConversationID, createAssistantMessage, createUserMessage, getConversation, newConversation, updateConversationTitle } from "../../lib/db";
+import { addAssistantMessage, addUserMessage, ConversationID, createMessage, getConversation, Message, newConversation, updateConversationTitle } from "../../lib/db";
 import { setCurrentConversation } from "../../lib/storage";
-import ollama, { Message } from 'ollama';
+import ollama from 'ollama';
 import { AutoResizeTextarea } from "../../AutoResizeTextarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { Button } from "../ui/button";
@@ -72,11 +72,11 @@ export function ChatForm() {
     }, [chatState, chatDispatch]);
 
 
-    const streamAssistantMessage = React.useCallback(async (currentConversationId: ConversationID, userMessage: Message, currentModel: string) => {
+    const streamAssistantMessage = React.useCallback(async (currentConversationId: ConversationID, userMessage: Message, currentModel: string): Promise<Message | undefined> => {
         try {
             // Display an empty message for the assistant
             let assistantId = crypto.randomUUID();
-            const assistantMessage = createAssistantMessage(currentConversationId, "", assistantId);
+            const assistantMessage = createMessage(currentConversationId, "assistant", "", assistantId);
             chatDispatch({ type: "SET_ASSISTANT_ANSWER", payload: assistantMessage });
             // Send the user message
             const response = await ollama.chat({
@@ -93,7 +93,7 @@ export function ChatForm() {
                     accumulateContent += buffer;
                     chatDispatch({
                         type: "SET_ASSISTANT_ANSWER",
-                        payload: createAssistantMessage(currentConversationId, accumulateContent, assistantId)
+                        payload: createMessage(currentConversationId, "assistant", accumulateContent, assistantId)
                     });
                     buffer = "";
                 }
@@ -101,17 +101,9 @@ export function ChatForm() {
             if (buffer.length > 0) {
                 accumulateContent += buffer;
                 // Dispaly the assistant message currently streaming
-                chatDispatch({ type: "SET_ASSISTANT_ANSWER", payload: createAssistantMessage(currentConversationId, accumulateContent, assistantId) });
+                chatDispatch({ type: "SET_ASSISTANT_ANSWER", payload: createMessage(currentConversationId, "assistant", accumulateContent, assistantId) });
             }
-            const newMessage = createAssistantMessage(currentConversationId, accumulateContent, assistantId);
-            // Update the title
-            if (chatState.messages.length === 0) {
-                const title = await generateConversationTitle(currentModel, [userMessage, newMessage]);
-                await updateConversationTitle(currentConversationId, title);
-            }
-            // Update the messages
-            chatDispatch({ type: "ADD_MESSAGE", payload: newMessage });
-            addMessage(currentConversationId, newMessage);
+            return createMessage(currentConversationId, "assistant", accumulateContent, assistantId);
         } catch (error) {
             console.error("Failed to fetch assistant answer:", error);
         } finally {
@@ -129,10 +121,20 @@ export function ChatForm() {
             setInput("");
             setStreaming(true);
             // Display the user message
-            const userMessage = createUserMessage(currentConversationId, input);
+            const userMessage = createMessage(currentConversationId, "user", input);
             chatDispatch({ type: "ADD_MESSAGE", payload: userMessage });
-            await addMessage(currentConversationId, userMessage);
-            await streamAssistantMessage(currentConversationId, userMessage, modelState.currentModel);
+            await addUserMessage(currentConversationId, userMessage);
+            const assistantMessage = await streamAssistantMessage(currentConversationId, userMessage, modelState.currentModel);
+            if (assistantMessage !== undefined) {
+                // Update the title
+                if (chatState.messages.length > 0 && chatState.messages.length <= 2) {
+                    const title = await generateConversationTitle(modelState.currentModel, [...chatState.messages, userMessage, assistantMessage]);
+                    await updateConversationTitle(currentConversationId, title);
+                }
+                // Update the messages
+                addAssistantMessage(currentConversationId, assistantMessage);
+                chatDispatch({ type: "ADD_MESSAGE", payload: assistantMessage });
+            }
             setStreaming(false);
         }
     };

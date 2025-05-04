@@ -18,17 +18,18 @@ export interface Conversation {
 
 interface UserMessage {
     id: UserMessageID;
-    role: Role;
+    role: Role & "user";
     content: string;
     date: Date;
     conversationId: ConversationID;
+    parentId: AssistantMessageID | undefined;
     isActive: boolean;
     answerMessageId: AssistantMessageID | undefined;
 }
 
 interface AssistantMessage {
     id: AssistantMessageID;
-    role: Role;
+    role: Role & "assistant";
     content: string;
     date: Date;
     conversationId: ConversationID;
@@ -143,68 +144,95 @@ export async function getMessages(conversationId: ConversationID): Promise<Messa
 }
 
 
-async function addInitialMessage(conversation: Conversation, message: Message) {
-    if (isUserMessage(message)) {
-        await db.conversations.update(
-            conversation.id,
-            {
-                userMessageIds: [...conversation.userMessageIds, message.id],
-                lastMessageId: message.id
+async function insertUserMessage(conversation: Conversation, lastMessageId: AssistantMessageID | undefined, message: Message) {
+    await db.transaction("rw", db.conversations, db.userMessages, db.assistantMessages, async () => {
+        if (lastMessageId === undefined) {
+            conversation.userMessageIds.push(message.id);
+            await db.conversations.update(
+                conversation.id,
+                {
+                    userMessageIds: conversation.userMessageIds,
+                    lastMessageId: message.id
+                }
+            );
+        } else {
+            const lastAssistantMessage = await db.assistantMessages.get(lastMessageId);
+            if (lastAssistantMessage !== undefined) {
+                lastAssistantMessage.nextMessageIds.push(message.id);
+                await db.assistantMessages.update(lastMessageId, { nextMessageIds: lastAssistantMessage.nextMessageIds });
+                await db.conversations.update(conversation.id, { lastMessageId: message.id });
             }
-        );
-        await db.userMessages.add({ ...message, isActive: true });
-    }
-    else
-        throw new Error(`Can't start a conversation with a "${message.role}" message`);
+            else {
+                throw new Error(`Can't find the last message "${lastMessageId}" in the assistant messages`);
+            }
+        }
+        const userMessage = createUserMessage(message.conversationId, message.content, lastMessageId, true, message.id, message.date);
+        await db.userMessages.add(userMessage);
+    });
 }
 
-async function addAssistantMessage(conversation: Conversation, lastMessageId: MessageID, message: AssistantMessage) {
+export async function addUserMessage(conversationId: ConversationID, message: Message) {
+    const conversation = await getConversationWithError(conversationId);
+    await insertUserMessage(conversation, conversation.lastMessageId, message);
+}
+
+
+async function insertAssistantMessage(conversation: Conversation, lastMessageId: UserMessageID, message: Message) {
     const lastUserMessage = await db.userMessages.get(lastMessageId);
     if (lastUserMessage !== undefined) {
-        await db.userMessages.update(lastMessageId, { answerMessageId: message.id });
-        await db.conversations.update(conversation.id, { lastMessageId: message.id });
-        await db.assistantMessages.add({ ...message, parentId: lastUserMessage.id });
+        await db.transaction("rw", db.conversations, db.userMessages, db.assistantMessages, async () => {
+            await db.userMessages.update(lastMessageId, { answerMessageId: message.id });
+            await db.conversations.update(conversation.id, { lastMessageId: message.id });
+            const assistantMessage = createAssistantMessage(message.conversationId, message.content, lastMessageId, message.id, message.date);
+            await db.assistantMessages.add(assistantMessage);
+        });
     } else {
         throw new Error(`Can't find the last message "${lastMessageId}" in the user messages`);
     }
 }
 
-async function addUserMessage(conversation: Conversation, lastMessageId: MessageID, message: UserMessage) {
-    const lastAssistantMessage = await db.assistantMessages.get(lastMessageId);
-    if (lastAssistantMessage !== undefined) {
-        await db.assistantMessages.update(lastMessageId, { nextMessageIds: [...lastAssistantMessage.nextMessageIds, message.id] });
-        await db.conversations.update(conversation.id, { lastMessageId: message.id });
-        await db.userMessages.add({ ...message, isActive: true });
-    } else {
-        throw new Error(`Can't find the last message "${lastMessageId}" in the assistant messages`);
-    }
+export async function addAssistantMessage(conversationId: ConversationID, message: Message) {
+    const conversation = await getConversationWithError(conversationId);
+    if (conversation.lastMessageId === undefined) throw new Error(`Can't start a conversation with a "${message.role}" message`);
+    await insertAssistantMessage(conversation, conversation.lastMessageId, message);
 }
 
-export async function addMessage(conversationId: ConversationID, message: Message) {
-    try {
-        await db.transaction("rw", db.conversations, db.userMessages, db.assistantMessages, async () => {
-            const conversation = await getConversationWithError(conversationId);
-            if (conversation.lastMessageId === undefined) {
-                await addInitialMessage(conversation, message);
-            } else if (isAssistantMessage(message)) {
-                await addAssistantMessage(conversation, conversation.lastMessageId, message);
-            } else if (isUserMessage(message)) {
-                await addUserMessage(conversation, conversation.lastMessageId, message);
-            } else {
-                throw new Error(`The given message has an unknow role: ${message.role}`);
-            }
-        });
-    } catch (error) {
-        console.error("Failed to save into the db:", error);
-    }
+
+
+async function editMessage(conversationId: ConversationID, editedMessageId: UserMessageID, content: string) {
+    await db.transaction("rw", db.conversations, db.userMessages, db.assistantMessages, async () => {
+        const conversation = await getConversationWithError(conversationId);
+        const editedMessage = await db.userMessages.get(editedMessageId);
+        if (editedMessage !== undefined) {
+            const parentId = editedMessage.parentId;
+            insertUserMessage(conversation, parentId, createMessage(conversationId, "user", content));
+            // const userMessage = createUserMessage(conversationId, content, parentId, false);
+            // // Set the editedMessage to inactive
+            // await db.userMessages.update(editedMessageId, { isActive: false });
+            // // Update the next messages of the parent answer
+            // if (parentId !== undefined) {
+            //     const lastAssistantMessage = await db.assistantMessages.get(parentId);
+            //     if (lastAssistantMessage !== undefined) {
+            //         lastAssistantMessage.nextMessageIds.push(userMessage.id);
+            //         await db.assistantMessages.update(parentId, { nextMessageIds: lastAssistantMessage.nextMessageIds });
+            //     } else {
+            //         throw new Error(`Can't find the parent message with the id "${parentId}"`);
+            //     }
+            // }
+            // // Update last message of the conversation
+            // await db.conversations.update(conversationId, { lastMessageId: userMessage.id })
+        } else {
+            throw new Error(`Can't edit the message because the id "${editedMessageId}" is not available`);
+        }
+    });
 }
 
-function createMessage(
+export function createMessage(
     conversationId: ConversationID,
     role: Role,
     content: string,
     id: MessageID | undefined = undefined,
-    date: Date | undefined = undefined
+    date: Date | undefined = undefined,
 ): Message {
     let messageId: MessageID;
     if (id == undefined)
@@ -220,20 +248,25 @@ function createMessage(
 }
 
 
-export function createUserMessage(
+function createUserMessage(
     conversationId: ConversationID,
     content: string,
+    parentId: AssistantMessageID | undefined = undefined,
+    isActive: boolean = false,
     id: UserMessageID | undefined = undefined,
     date: Date | undefined = undefined,
+    answerMessageId: AssistantMessageID | undefined = undefined,
 ): UserMessage {
     return {
         ...createMessage(conversationId, "user", content, id, date),
-        isActive: false,
-        answerMessageId: undefined
+        role: "user",
+        parentId: parentId,
+        isActive: isActive,
+        answerMessageId: answerMessageId,
     };
 }
 
-export function createAssistantMessage(
+function createAssistantMessage(
     conversationId: ConversationID,
     content: string,
     parentId: UserMessageID,
@@ -242,6 +275,7 @@ export function createAssistantMessage(
 ): AssistantMessage {
     return {
         ...createMessage(conversationId, "assistant", content, id, date),
+        role: "assistant",
         parentId,
         nextMessageIds: []
     };
