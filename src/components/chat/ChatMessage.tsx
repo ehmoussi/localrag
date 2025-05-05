@@ -6,6 +6,8 @@ import { ChevronLeft, ChevronRight, Copy, Pencil } from "lucide-react";
 import { useAssistantStreaming } from "./use-assistantstreaming";
 import { useModel } from "./use-model";
 import { useChat } from "./use-chat";
+import Markdown from 'react-markdown';
+import { ScrollArea, ScrollBar } from "../ui/scroll-area";
 
 
 export function AssistantMessage({ message }: { message: Message }) {
@@ -15,11 +17,12 @@ export function AssistantMessage({ message }: { message: Message }) {
             onMouseEnter={() => { setIsHovering(true) }}
             onMouseLeave={() => { setIsHovering(false) }}
         >
-            <div
+            <ScrollArea
                 className="max-w-[80%] rounded-xl px-3 py-2 text-sm whitespace-pre-line self-start bg-gray-100 text-black"
             >
-                {message.content}
-            </div>
+                <Markdown>{message.content}</Markdown>
+                <ScrollBar orientation="horizontal" />
+            </ScrollArea>
             <div
                 className="flex gap-1 justify-start mt-1 opacity-70"
                 style={{ visibility: isHovering ? 'visible' : 'hidden' }}>
@@ -30,7 +33,7 @@ export function AssistantMessage({ message }: { message: Message }) {
                     <Copy size={16} />
                 </button>
             </div>
-        </div>
+        </div >
     );
 }
 
