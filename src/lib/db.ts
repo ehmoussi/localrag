@@ -122,6 +122,36 @@ async function findActiveUserMessage(userMessageIds: UserMessageID[]): Promise<U
     }
 }
 
+export async function isUserMessageActive(userMessageId: UserMessageID): Promise<boolean> {
+    const userMessage = await db.userMessages.get(userMessageId)
+    if (userMessage === undefined) return false;
+    return userMessage.isActive;
+}
+
+export async function setUserMessageStatus(userMessageId: UserMessageID, isActive: boolean) {
+    await db.transaction("rw", db.userMessages, async () => {
+        await db.userMessages.update(userMessageId, { isActive });
+    });
+}
+
+export async function getSiblingIds(conversationId: ConversationID, userMessageId: UserMessageID): Promise<UserMessageID[]> {
+    const userMessage = await db.userMessages.get(userMessageId);
+    if (userMessage !== undefined) {
+        let siblings: UserMessageID[] | undefined;
+        if (userMessage.parentId !== undefined) {
+            const answerMessage = await db.assistantMessages.get(userMessage.parentId);
+            if (answerMessage !== undefined) siblings = answerMessage.nextMessageIds;
+        } else {
+            let conversation = await db.conversations.get(conversationId);
+            if (conversation !== undefined && conversation.userMessageIds.includes(userMessageId)) siblings = conversation.userMessageIds;
+        }
+        if (siblings !== undefined) {
+            return siblings;
+        }
+    }
+    return [];
+}
+
 export async function getMessages(conversationId: ConversationID): Promise<Message[]> {
     const conversation = await getConversationWithError(conversationId);
     let messages: Message[] = [];

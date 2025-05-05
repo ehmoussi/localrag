@@ -1,8 +1,8 @@
 import { AutoResizeTextarea } from "@/AutoResizeTextarea";
-import { addAssistantMessage, editMessage, getMessages, Message } from "@/lib/db";
-import React from "react";
+import { addAssistantMessage, editMessage, getMessages, getSiblingIds, Message, setUserMessageStatus } from "@/lib/db";
+import React, { useEffect } from "react";
 import { Button } from "../ui/button";
-import { Copy, Pencil } from "lucide-react";
+import { ChevronLeft, ChevronRight, Copy, Pencil } from "lucide-react";
 import { useAssistantStreaming } from "./use-assistantstreaming";
 import { useModel } from "./use-model";
 import { useChat } from "./use-chat";
@@ -78,6 +78,7 @@ function UserMessageDisplay({ message, onClickEdit }: { message: Message, onClic
                 >
                     <Pencil size={16} />
                 </button>
+                <MessagePagination message={message} />
             </div>
         </div>
     );
@@ -90,7 +91,6 @@ function UserMessageEditing({ message, setIsEditing }: { message: Message, setIs
     const { modelState } = useModel();
 
     async function submitMessage() {
-        // TODO: add the editing of the message
         setIsEditing(false);
         if (modelState.currentModel !== undefined) {
             const userMessage = await editMessage(message.conversationId, message.id, input);
@@ -161,3 +161,80 @@ function UserMessageEditing({ message, setIsEditing }: { message: Message, setIs
 }
 
 
+function MessagePagination({ message }: { message: Message }) {
+    const [currentPage, setCurrentPage] = React.useState<number | undefined>();
+    const [nbPages, setNbPages] = React.useState<number | undefined>(1);
+    const { chatDispatch } = useChat();
+
+    useEffect(() => {
+        let isMounted = true;
+        async function updatePage() {
+            if (isMounted) {
+                const siblings = await getSiblingIds(message.conversationId, message.id);
+                const nbSiblings = siblings.length;
+                if (nbSiblings > 1) {
+                    const index = siblings.findIndex((s) => s === message.id);
+                    setCurrentPage(index + 1);
+                    setNbPages(nbSiblings);
+                } else {
+                    setCurrentPage(undefined);
+                    setNbPages(undefined);
+                }
+            }
+        }
+        updatePage();
+        return () => {
+            isMounted = false;
+        }
+    }, [message]);
+
+    const moveToPreviousMessage = async (e: React.FormEvent<HTMLButtonElement>) => {
+        e.preventDefault();
+        const siblingIds = await getSiblingIds(message.conversationId, message.id);
+        for (const [index, siblingId] of siblingIds.entries()) {
+            if (siblingId === message.id && index > 0) {
+                await setUserMessageStatus(siblingId, false);
+                await setUserMessageStatus(siblingIds[index - 1], true);
+                setCurrentPage(index);
+                chatDispatch({ type: "SET_MESSAGES", payload: await getMessages(message.conversationId) });
+            }
+        }
+    };
+
+    const moveToNextMessage = async (e: React.FormEvent<HTMLButtonElement>) => {
+        e.preventDefault();
+        const siblingIds = await getSiblingIds(message.conversationId, message.id);
+        for (const [index, siblingId] of siblingIds.entries()) {
+            if (siblingId === message.id && index < (siblingIds.length - 1)) {
+                await setUserMessageStatus(siblingId, false);
+                await setUserMessageStatus(siblingIds[index + 1], true);
+                setCurrentPage(index);
+                chatDispatch({ type: "SET_MESSAGES", payload: await getMessages(message.conversationId) });
+            }
+        }
+    };
+
+    return (
+        <>
+            {
+                currentPage !== undefined && nbPages !== undefined && (
+                    <>
+                        <button
+                            onClick={moveToPreviousMessage}
+                            className="p-1 rounded hover:bg-black/10"
+                            aria-label="Previous message">
+                            <ChevronLeft size={16} />
+                        </button>
+                        <span>{currentPage} / {nbPages}</span>
+                        <button
+                            onClick={moveToNextMessage}
+                            className="p-1 rounded hover:bg-black/10"
+                            aria-label="Next message">
+                            <ChevronRight size={16} />
+                        </button>
+                    </>
+                )
+            }
+        </>
+    );
+}
