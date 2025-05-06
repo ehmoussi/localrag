@@ -7,7 +7,9 @@ import { useAssistantStreaming } from "./use-assistantstreaming";
 import { useModel } from "./use-model";
 import { useChat } from "./use-chat";
 import Markdown from 'react-markdown';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { ScrollArea, ScrollBar } from "../ui/scroll-area";
+import { useStreaming } from "./use-streaming";
 
 
 export function AssistantMessage({ message }: { message: Message }) {
@@ -18,12 +20,39 @@ export function AssistantMessage({ message }: { message: Message }) {
             onMouseLeave={() => { setIsHovering(false) }}
         >
             <ScrollArea
-                className="max-w-[80%] rounded-xl px-3 py-2 text-sm whitespace-pre-line self-start bg-gray-100 text-black"
+                className="max-w-[95%] rounded-md shadow-sm px-3 py-2 text-lg whitespace-pre-line self-start border-indigo-100 border text-black"
             >
-                <Markdown>{message.content}</Markdown>
+                <Markdown
+                    components={{
+                        code(props) {
+                            const { children, className, node, ...rest } = props
+                            const match = /language-(\w+)/.exec(className || '')
+                            return match ? (<>
+                                <SyntaxHighlighter
+                                    {...rest}
+                                    PreTag="div"
+                                    children={String(children).replace(/\n$/, '')}
+                                    language={match[1]}
+                                />
+                                <button
+                                    className="p-1 rounded hover:bg-black/10"
+                                    aria-label="Copy code snippet"
+                                    onClick={() => { navigator.clipboard.writeText(String(children)) }}
+                                >
+                                    <Copy size={12} />
+                                </button></>
+                            ) : (
+                                <code {...rest} className={className}>
+                                    {children}
+                                </code>
+                            )
+                        }
+                    }}
+                >{message.content}</Markdown>
                 <ScrollBar orientation="horizontal" />
             </ScrollArea>
             <div
+                onClick={() => navigator.clipboard.writeText(message.content)}
                 className="flex gap-1 justify-start mt-1 opacity-70"
                 style={{ visibility: isHovering ? 'visible' : 'hidden' }}>
                 <button
@@ -53,14 +82,15 @@ export function UserMessage({ message }: { message: Message }) {
 
 function UserMessageDisplay({ message, onClickEdit }: { message: Message, onClickEdit: () => void }) {
     const [isHovering, setIsHovering] = React.useState<boolean>(false);
+    const { isStreaming } = useStreaming();
     return (
         <div className="group flex flex-col"
-            onMouseEnter={() => { setIsHovering(true) }}
+            onMouseEnter={() => { setIsHovering(true && !isStreaming) }}
             onMouseLeave={() => { setIsHovering(false) }}
         >
             <div
                 data-role={message.role}
-                className="max-w-[80%] rounded-xl px-3 py-2 text-sm whitespace-pre-line self-end bg-blue-500 text-white"
+                className="max-w-[80%] rounded-lg px-3 py-2 text-lg whitespace-pre-line self-end bg-blue-500 text-white"
             >
                 {message.content}
             </div>
@@ -69,6 +99,7 @@ function UserMessageDisplay({ message, onClickEdit }: { message: Message, onClic
                 className="flex gap-1 justify-end mt-1 opacity-70"
                 style={{ visibility: isHovering ? 'visible' : 'hidden' }}>
                 <button
+                    onClick={() => { navigator.clipboard.writeText(message.content) }}
                     className="p-1 rounded hover:bg-black/10"
                     aria-label="Copy message"
                 >
@@ -140,20 +171,20 @@ function UserMessageEditing({ message, setIsEditing }: { message: Message, setIs
                         onChange={(v) => { setInput(v) }}
                         value={input}
                         placeholder="Enter a message"
-                        className="placeholder:text-muted-foreground flex-1 bg-transparent focus:outline-none p-3 rounded-xl border border-blue-500 shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all resize-none min-h-[40px] text-sm"
+                        className="placeholder:text-muted-foreground flex-1 bg-transparent focus:outline-none p-3 rounded-lg border border-blue-500 shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all resize-none min-h-[40px] text-lg"
                     />
                 </div>
                 <div className="flex justify-end gap-2 mt-2">
                     <Button
                         variant="ghost"
                         onClick={handleCancel}
-                        className="text-sm px-3 py-1 h-auto"
+                        className="text-lg px-3 py-1 h-auto"
                     >
                         Cancel
                     </Button>
                     <Button
                         onClick={handleSubmit}
-                        className="bg-blue-500 text-sm hover:bg-black text-white px-3 py-1 h-auto"
+                        className="bg-blue-500 text-lg hover:bg-black text-white px-3 py-1 h-auto"
                     >
                         Submit
                     </Button>

@@ -11,4 +11,5 @@ Simple chat app with a RAG capability (work in progress ...)
 - [ ] Upload of files
 - [x] Edit user messages
 - [ ] Add RAG feature
-- [ ] Use markdown to display the answer of the assistant
+- [x] Use markdown to display the answer of the assistant
+- [ ] Manage failures in general (add alerts to the user, impact on the db, ...)
