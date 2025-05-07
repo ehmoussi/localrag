@@ -3,6 +3,16 @@
 Simple chat app with a RAG capability (work in progress ...)
 
 
+# Installation (for dev)
+
+```console
+npm install
+```
+
+```console
+npm run dev
+```
+
 # TODOs
 
 - [x] Update title of a conversation 
