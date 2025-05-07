@@ -50,7 +50,7 @@ export function ChatModelSelector() {
         }
         else
             console.log("failed to fetch the models");
-    }, [modelState]);
+    }, [modelState, setCurrentModel]);
 
     return (
         <Select

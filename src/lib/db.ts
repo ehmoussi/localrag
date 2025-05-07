@@ -142,7 +142,7 @@ export async function getSiblingIds(conversationId: ConversationID, userMessageI
             const answerMessage = await db.assistantMessages.get(userMessage.parentId);
             if (answerMessage !== undefined) siblings = answerMessage.nextMessageIds;
         } else {
-            let conversation = await db.conversations.get(conversationId);
+            const conversation = await db.conversations.get(conversationId);
             if (conversation !== undefined && conversation.userMessageIds.includes(userMessageId)) siblings = conversation.userMessageIds;
         }
         if (siblings !== undefined) {
@@ -154,7 +154,7 @@ export async function getSiblingIds(conversationId: ConversationID, userMessageI
 
 export async function getMessages(conversationId: ConversationID): Promise<Message[]> {
     const conversation = await getConversationWithError(conversationId);
-    let messages: Message[] = [];
+    const messages: Message[] = [];
     let currentUserMessage = await findActiveUserMessage(conversation.userMessageIds);
     while (currentUserMessage !== undefined) {
         messages.push(currentUserMessage);

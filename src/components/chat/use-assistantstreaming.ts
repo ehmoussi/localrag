@@ -4,15 +4,17 @@ import { ConversationID, createMessage, Message } from "@/lib/db";
 import ollama from 'ollama';
 
 
-const BUFFER_STREAMING_SIZE: number = 40;
+const BUFFER_STREAMING_SIZE: number = 30;
 
 export function useAssistantStreaming() {
     const { chatState, chatDispatch } = useChat();
 
-    const streamAssistantMessage = React.useCallback(async (currentConversationId: ConversationID, userMessage: Message, currentModel: string): Promise<Message | undefined> => {
+    const streamAssistantMessage = React.useCallback(async (currentConversationId: ConversationID, userMessage: Message, currentModel: string): Promise<Message> => {
+        const assistantId = crypto.randomUUID();
+        let accumulateContent = "";
+        const newMessage = createMessage(currentConversationId, "assistant", "", assistantId);
         try {
             // Display an empty message for the assistant
-            let assistantId = crypto.randomUUID();
             const assistantMessage = createMessage(currentConversationId, "assistant", "", assistantId);
             chatDispatch({ type: "SET_ASSISTANT_ANSWER", payload: assistantMessage });
             // Send the user message
@@ -21,7 +23,6 @@ export function useAssistantStreaming() {
                 messages: [...chatState.messages, userMessage],
                 stream: true,
             });
-            let accumulateContent = "";
             let buffer = "";
             for await (const chunk of response) {
                 buffer += chunk.message.content;
@@ -40,13 +41,14 @@ export function useAssistantStreaming() {
                 // Dispaly the assistant message currently streaming
                 chatDispatch({ type: "SET_ASSISTANT_ANSWER", payload: createMessage(currentConversationId, "assistant", accumulateContent, assistantId) });
             }
-            return createMessage(currentConversationId, "assistant", accumulateContent, assistantId);
         } catch (error) {
             console.error("Failed to fetch assistant answer:", error);
         } finally {
             // Remove the streaming message
             chatDispatch({ type: "SET_ASSISTANT_ANSWER", payload: undefined });
+            newMessage.content = accumulateContent;
         }
+        return newMessage;
     }, [chatState.messages, chatDispatch]);
 
     return { streamAssistantMessage };

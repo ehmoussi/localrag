@@ -6,7 +6,7 @@ import ollama from 'ollama';
 import { AutoResizeTextarea } from "../../AutoResizeTextarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { Button } from "../ui/button";
-import { ArrowUpIcon, PaperclipIcon } from "lucide-react";
+import { ArrowUpIcon, CircleStopIcon, PaperclipIcon } from "lucide-react";
 import { useModel } from "./use-model";
 import { ChatModelSelector } from "./ChatModelSelector";
 import { useStreaming } from "./use-streaming";
@@ -40,7 +40,7 @@ async function generateConversationTitle(currentModel: string, messages: Message
         const title = response.response.trim();//.replace(/^["']|["']$/g, '');
         console.log(title);
         return title;
-    } catch (error) {
+    } catch {
         return "New Conversation";
     }
 }
@@ -85,23 +85,26 @@ export function ChatForm() {
             chatDispatch({ type: "ADD_MESSAGE", payload: userMessage });
             await addUserMessage(currentConversationId, userMessage);
             const assistantMessage = await streamAssistantMessage(currentConversationId, userMessage, modelState.currentModel);
-            if (assistantMessage !== undefined) {
-                // Update the title
-                if (chatState.messages.length > 0 && chatState.messages.length <= 2) {
-                    const title = await generateConversationTitle(modelState.currentModel, [...chatState.messages, userMessage, assistantMessage]);
-                    await updateConversationTitle(currentConversationId, title);
-                }
-                // Update the messages
-                addAssistantMessage(currentConversationId, assistantMessage);
-                chatDispatch({ type: "ADD_MESSAGE", payload: assistantMessage });
+            // Update the last message displayed
+            // NOTE: the update should be put just after to avoid flashing the user when answer message and real message are substitued
+            chatDispatch({ type: "ADD_MESSAGE", payload: assistantMessage });
+            // Update the title
+            if (chatState.messages.length === 0) {
+                const title = await generateConversationTitle(modelState.currentModel, [...chatState.messages, userMessage, assistantMessage]);
+                await updateConversationTitle(currentConversationId, title);
             }
+            // Update the messages in the db
+            await addAssistantMessage(currentConversationId, assistantMessage);
             setStreaming(false);
         }
     };
 
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
-        await submitMessage();
+        if (!isStreaming)
+            await submitMessage();
+        else
+            ollama.abort();
     };
 
     const handleKeyDown = async (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -150,11 +153,15 @@ export function ChatForm() {
                 </Tooltip>
                 <Tooltip>
                     <TooltipTrigger asChild>
-                        <Button disabled={isStreaming} variant="ghost" size="sm" className="size-6 rounded-full">
-                            <ArrowUpIcon size={16} />
+                        <Button variant="ghost" size="sm" className="size-6 rounded-full">
+                            {
+                                isStreaming ?
+                                    <CircleStopIcon size={24} /> :
+                                    <ArrowUpIcon size={24} />
+                            }
                         </Button>
                     </TooltipTrigger>
-                    <TooltipContent sideOffset={12}>Submit</TooltipContent>
+                    <TooltipContent sideOffset={12}>{isStreaming ? "Abort" : "Submit"}</TooltipContent>
                 </Tooltip>
             </div>
         </form>

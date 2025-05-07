@@ -25,7 +25,7 @@ export function AssistantMessage({ message }: { message: Message }) {
                 <Markdown
                     components={{
                         code(props) {
-                            const { children, className, node, ...rest } = props
+                            const { children, className, ...rest } = props
                             const match = /language-(\w+)/.exec(className || '')
                             return match ? (<>
                                 <SyntaxHighlighter
@@ -85,7 +85,7 @@ function UserMessageDisplay({ message, onClickEdit }: { message: Message, onClic
     const { isStreaming } = useStreaming();
     return (
         <div className="group flex flex-col"
-            onMouseEnter={() => { setIsHovering(true && !isStreaming) }}
+            onMouseEnter={() => { setIsHovering(!isStreaming) }}
             onMouseLeave={() => { setIsHovering(false) }}
         >
             <div
@@ -123,6 +123,7 @@ function UserMessageEditing({ message, setIsEditing }: { message: Message, setIs
     const { chatDispatch } = useChat();
     const { streamAssistantMessage } = useAssistantStreaming();
     const { modelState } = useModel();
+    const { setStreaming } = useStreaming();
 
     async function submitMessage() {
         setIsEditing(false);
@@ -132,12 +133,14 @@ function UserMessageEditing({ message, setIsEditing }: { message: Message, setIs
                 // Update the messages because the children of the user message are not the same anymore
                 const newMessages = await getMessages(message.conversationId);
                 chatDispatch({ type: "SET_MESSAGES", payload: newMessages });
+                setStreaming(true);
                 const assistantMessage = await streamAssistantMessage(message.conversationId, userMessage, modelState.currentModel);
                 if (assistantMessage !== undefined) {
                     // Update the last message
-                    addAssistantMessage(userMessage.conversationId, assistantMessage);
                     chatDispatch({ type: "ADD_MESSAGE", payload: assistantMessage });
+                    await addAssistantMessage(userMessage.conversationId, assistantMessage);
                 }
+                setStreaming(false);
             } else {
                 console.error("Failed to create the user message");
             }

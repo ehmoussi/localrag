@@ -39,7 +39,7 @@ const ConversationItem = React.memo(({ conversation }: { conversation: Conversat
         const messages = await getMessages(conversation.id);
         chatDispatch({ type: "SET_MESSAGES", payload: messages });
         chatDispatch({ type: "SET_CONVERSATION", payload: conversation.id });
-    }, [chatDispatch]);
+    }, [chatDispatch, conversation.id]);
 
     const deleteClicked = async (event: React.FormEvent<HTMLDivElement>) => {
         event.preventDefault();

@@ -7,7 +7,7 @@ Simple chat app with a RAG capability (work in progress ...)
 
 - [x] Update title of a conversation 
 - [ ] Workers to manage the assistant streaming answer
-- [ ] Abort assistant streaming answer
+- [x] Abort assistant streaming answer
 - [ ] Upload of files
 - [x] Edit user messages
 - [ ] Add RAG feature
