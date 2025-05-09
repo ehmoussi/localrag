@@ -6,6 +6,7 @@ import React from "react";
 import { useChat } from "./components/chat/use-chat";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./components/ui/dropdown-menu";
 import { setDocumentTitle } from "./lib/utils";
+import { useAssistantStreaming } from "./components/chat/use-assistantstreaming";
 
 
 export function ConversationHeader() {
@@ -34,6 +35,7 @@ export function ConversationHeader() {
 
 const ConversationItem = React.memo(({ conversation }: { conversation: Conversation }) => {
     const { chatState, chatDispatch } = useChat();
+    const { terminateWorker } = useAssistantStreaming();
 
     const conversationClicked = React.useCallback(async (event: React.MouseEvent<HTMLButtonElement>) => {
         event.preventDefault();
@@ -46,6 +48,7 @@ const ConversationItem = React.memo(({ conversation }: { conversation: Conversat
 
     const deleteClicked = async (event: React.FormEvent<HTMLDivElement>) => {
         event.preventDefault();
+        terminateWorker(conversation.id);
         await deleteConversation(conversation.id);
         chatDispatch({ type: "SET_MESSAGES", payload: [] });
         chatDispatch({ type: "SET_CONVERSATION", payload: undefined });

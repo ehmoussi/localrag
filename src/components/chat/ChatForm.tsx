@@ -29,7 +29,6 @@ async function generateConversationTitle(currentModel: string, messages: Message
             + "- Answer with the same language as the conversation.\n\n"
             + conversationText + "\n\n"
         );
-        console.log(prompt);
         const response = await ollama.generate({
             model: currentModel,
             prompt: prompt,
@@ -52,7 +51,7 @@ export function ChatForm() {
     const { chatState, chatDispatch } = useChat();
     const { isStreaming, setStreaming } = useStreaming();
     const { modelState } = useModel();
-    const { streamAssistantMessage } = useAssistantStreaming();
+    const { streamAssistantMessage, abortAssistantMessage } = useAssistantStreaming();
 
     const getCurrentConversationId = React.useCallback(async (): Promise<ConversationID> => {
         let currentConversationId;
@@ -84,19 +83,25 @@ export function ChatForm() {
             const userMessage = createMessage(currentConversationId, "user", input);
             chatDispatch({ type: "ADD_MESSAGE", payload: userMessage });
             await addUserMessage(currentConversationId, userMessage);
-            const assistantMessage = await streamAssistantMessage(currentConversationId, userMessage, modelState.currentModel);
-            // Update the last message displayed
-            // NOTE: the update should be put just after to avoid flashing the user when answer message and real message are substitued
-            chatDispatch({ type: "ADD_MESSAGE", payload: assistantMessage });
-            setStreaming(false);
-            // Update the title of the conversation
-            if (chatState.messages.length === 0) {
-                const title = await generateConversationTitle(modelState.currentModel, [...chatState.messages, userMessage, assistantMessage]);
-                await updateConversationTitle(currentConversationId, title);
-                setDocumentTitle(title);
-            }
-            // Update the messages in the db
-            await addAssistantMessage(currentConversationId, assistantMessage);
+            streamAssistantMessage(
+                currentConversationId,
+                userMessage,
+                modelState.currentModel,
+                async (assistantMessage: Message, currentModel: string) => {
+                    // Update the last message displayed
+                    // NOTE: the update should be put just after to avoid flashing the user when answer message and real message are substitued
+                    chatDispatch({ type: "ADD_MESSAGE", payload: assistantMessage });
+                    setStreaming(false);
+                    // Update the title of the conversation
+                    if (chatState.messages.length === 0) {
+                        const title = await generateConversationTitle(currentModel, [...chatState.messages, userMessage, assistantMessage]);
+                        await updateConversationTitle(currentConversationId, title);
+                        setDocumentTitle(title);
+                    }
+                    // Update the messages in the db
+                    await addAssistantMessage(currentConversationId, assistantMessage);
+                }
+            );
         }
     };
 
@@ -104,8 +109,10 @@ export function ChatForm() {
         e.preventDefault();
         if (!isStreaming)
             await submitMessage();
-        else
-            ollama.abort();
+        else {
+            const currentConversationId = await getCurrentConversationId();
+            abortAssistantMessage(currentConversationId);
+        }
     };
 
     const handleKeyDown = async (event: React.KeyboardEvent<HTMLTextAreaElement>) => {

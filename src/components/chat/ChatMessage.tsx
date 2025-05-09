@@ -144,13 +144,17 @@ function UserMessageEditing({ message, setIsEditing }: { message: Message, setIs
                 const newMessages = await getMessages(message.conversationId);
                 chatDispatch({ type: "SET_MESSAGES", payload: newMessages });
                 setStreaming(true);
-                const assistantMessage = await streamAssistantMessage(message.conversationId, userMessage, modelState.currentModel);
-                if (assistantMessage !== undefined) {
-                    // Update the last message
-                    chatDispatch({ type: "ADD_MESSAGE", payload: assistantMessage });
-                    await addAssistantMessage(userMessage.conversationId, assistantMessage);
-                }
-                setStreaming(false);
+                streamAssistantMessage(
+                    message.conversationId,
+                    userMessage,
+                    modelState.currentModel,
+                    async (assistantMessage: Message) => {
+                        // Update the last message
+                        chatDispatch({ type: "ADD_MESSAGE", payload: assistantMessage });
+                        await addAssistantMessage(userMessage.conversationId, assistantMessage);
+                        setStreaming(false);
+                    }
+                );
             } else {
                 console.error("Failed to create the user message");
             }

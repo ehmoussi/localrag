@@ -1,59 +1,71 @@
-import React from "react";
 import { useChat } from "./use-chat";
-import { ConversationID, createMessage, extractThinking, Message } from "@/lib/db";
-import ollama from 'ollama';
+import { ConversationID, Message } from "@/lib/db";
+import Worker from "@/lib/worker?worker"
+import React from "react";
 
+type StreamMessageType = "streaming" | "completed";
+type FinishedCallbackFn = (message: Message, currentModel: string) => Promise<void>;
 
-const BUFFER_STREAMING_SIZE: number = 30;
 
 export function useAssistantStreaming() {
     const { chatState, chatDispatch } = useChat();
+    const workerPoolRef = React.useRef<Map<ConversationID, Worker>>(new Map());
 
-    const streamAssistantMessage = React.useCallback(async (currentConversationId: ConversationID, userMessage: Message, currentModel: string): Promise<Message> => {
-        const assistantId = crypto.randomUUID();
-        let accumulateContent = "";
-        const newMessage = createMessage(currentConversationId, "assistant", "", assistantId);
-        try {
-            // Display an empty message for the assistant
-            const assistantMessage = createMessage(currentConversationId, "assistant", "", assistantId);
-            chatDispatch({ type: "SET_ASSISTANT_ANSWER", payload: assistantMessage });
-            // Send the user message
-            const response = await ollama.chat({
-                model: currentModel,
-                messages: [...chatState.messages, userMessage],
-                stream: true,
-            });
-            let buffer = "";
-            for await (const chunk of response) {
-                buffer += chunk.message.content;
-                // Dispaly the assistant message currently streaming
-                if (buffer.length > BUFFER_STREAMING_SIZE) {
-                    accumulateContent += buffer;
-                    const { thinking, answer } = extractThinking(accumulateContent);
-                    chatDispatch({
-                        type: "SET_ASSISTANT_ANSWER",
-                        payload: createMessage(currentConversationId, "assistant", answer, assistantId, thinking)
-                    });
-                    buffer = "";
+    const getOrCreateWorker = React.useCallback((conversationId: ConversationID) => {
+        const worker = workerPoolRef.current.get(conversationId);
+        if (worker === undefined) {
+            console.log(`create a new worker for the conversation ${conversationId}`);
+            const newWorker = new Worker({ name: conversationId.toString() });
+            workerPoolRef.current.set(conversationId, newWorker);
+            return newWorker;
+        }
+        return worker;
+    }, []);
+
+    const abortAssistantMessage = React.useCallback((conversationId: ConversationID) => {
+        const worker = workerPoolRef.current.get(conversationId);
+        if (worker !== undefined) worker.postMessage({ type: "abort" });
+    }, []);
+
+    const streamAssistantMessage = (
+        conversationId: ConversationID,
+        userMessage: Message,
+        currentModel: string,
+        finishedCallback: FinishedCallbackFn,
+    ) => {
+        const worker = getOrCreateWorker(conversationId);
+        console.log(`get the worker for the conversation "${conversationId}"`);
+        if (worker.onmessage === null) {
+            worker.onmessage = async function (event: MessageEvent<{ type: StreamMessageType, payload: Message }>) {
+                chatDispatch({ type: "SET_ASSISTANT_ANSWER", payload: event.data.payload });
+                if (event.data.type === "completed") {
+                    chatDispatch({ type: "SET_ASSISTANT_ANSWER", payload: undefined });
+                    await finishedCallback(event.data.payload, currentModel);
                 }
             }
-            if (buffer.length > 0) {
-                accumulateContent += buffer;
-                const { thinking, answer } = extractThinking(accumulateContent);
-                // Dispaly the assistant message currently streaming
-                chatDispatch({ type: "SET_ASSISTANT_ANSWER", payload: createMessage(currentConversationId, "assistant", answer, assistantId, thinking) });
-            }
-        } catch (error) {
-            console.error("Failed to fetch assistant answer:", error);
-        } finally {
-            // Remove the streaming message
-            const { thinking, answer } = extractThinking(accumulateContent);
-            newMessage.thinking = thinking;
-            newMessage.content = answer;
-            chatDispatch({ type: "SET_ASSISTANT_ANSWER", payload: undefined });
         }
-        return newMessage;
-    }, [chatState.messages, chatDispatch]);
+        const messages = [...chatState.messages, userMessage];
+        worker.postMessage({ type: "initialValues", payload: { conversationId, messages, currentModel } });
+    };
 
-    return { streamAssistantMessage };
+    const terminateWorker = React.useCallback((conversationId: ConversationID) => {
+        const worker = workerPoolRef.current.get(conversationId);
+        if (worker !== undefined) {
+            worker.terminate();
+            workerPoolRef.current.delete(conversationId);
+        }
+    }, []);
+
+    // Clean the pool of workers when unmounting
+    React.useEffect(() => {
+        const workerPool = workerPoolRef.current;
+        return () => {
+            workerPool.forEach((worker) => {
+                worker.terminate();
+            });
+            workerPool.clear();
+        };
+    }, []);
+
+    return { streamAssistantMessage, abortAssistantMessage, terminateWorker };
 }
