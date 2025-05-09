@@ -13,24 +13,6 @@ import { useStreaming } from "./use-streaming";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../ui/collapsible";
 
 
-export function ThinkingMessage({ thinking }: { thinking: string }) {
-    const [isOpen, setIsOpen] = React.useState<boolean>(true);
-
-    return (
-        <Collapsible open={isOpen} onOpenChange={setIsOpen} className="opacity-60">
-            <CollapsibleTrigger asChild>
-                <Button variant="ghost" size="sm">
-                    <ChevronsUpDown size={6} />
-                    <span className="text-sm">Thinking ...</span>
-                </Button>
-            </CollapsibleTrigger>
-            <CollapsibleContent className="max-w-[80%] rounded-md px-4 pb-6 self-start border-black-100 border text-sm">
-                {thinking}
-            </CollapsibleContent>
-        </Collapsible >
-    );
-}
-
 
 export function AssistantMessage({ message }: { message: Message }) {
     const [isHovering, setIsHovering] = React.useState<boolean>(false);
@@ -42,6 +24,9 @@ export function AssistantMessage({ message }: { message: Message }) {
             <ScrollArea
                 className="max-w-[95%] rounded-md shadow-sm px-3 py-2 text-lg whitespace-pre-line self-start border-indigo-100 border text-black"
             >
+                {
+                    (!message.thinking && !message.content) && <span className="text-sm opacity-70">Thinking ...</span>
+                }
                 {
                     message.thinking && <ThinkingMessage thinking={message.thinking} />
                 }
@@ -298,5 +283,23 @@ function MessagePagination({ message }: { message: Message }) {
                 )
             }
         </>
+    );
+}
+
+export function ThinkingMessage({ thinking }: { thinking: string }) {
+    const [isOpen, setIsOpen] = React.useState<boolean>(true);
+
+    return (
+        <Collapsible open={isOpen} onOpenChange={setIsOpen} className="opacity-60">
+            <CollapsibleTrigger asChild>
+                <Button variant="ghost" size="sm">
+                    <ChevronsUpDown size={6} />
+                    <span className="text-sm">Thinking ...</span>
+                </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="max-w-[80%] rounded-md px-4 pb-6 self-start border-black-100 border text-sm">
+                {thinking}
+            </CollapsibleContent>
+        </Collapsible >
     );
 }
