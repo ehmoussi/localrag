@@ -20,6 +20,7 @@ interface UserMessage {
     id: UserMessageID;
     role: Role & "user";
     content: string;
+    thinking: string | undefined;
     date: Date;
     conversationId: ConversationID;
     parentId: AssistantMessageID | undefined;
@@ -31,6 +32,7 @@ interface AssistantMessage {
     id: AssistantMessageID;
     role: Role & "assistant";
     content: string;
+    thinking: string | undefined;
     date: Date;
     conversationId: ConversationID;
     parentId: UserMessageID;
@@ -41,6 +43,7 @@ export interface Message {
     id: MessageID;
     role: Role;
     content: string;
+    thinking: string | undefined;
     date: Date;
     conversationId: ConversationID;
 }
@@ -58,12 +61,12 @@ db.version(1).stores({
     assistantMessages: "id, date, conversationId, *nextMessageIds",
 });
 
-function isUserMessage(message: Message): message is UserMessage {
+export function isUserMessage(message: Message): message is UserMessage {
     return message.role === "user";
 }
 
-function isAssistantMessage(message: Message): message is AssistantMessage {
-    return message.role === "assistant";
+export function isAssistantMessage(message: Message): message is AssistantMessage {
+    return message.role === "assistant" && "thinking" in message;
 }
 
 export async function getConversation(conversationId: ConversationID): Promise<Conversation | undefined> {
@@ -221,7 +224,7 @@ async function insertAssistantMessage(conversation: Conversation, lastMessageId:
         await db.transaction("rw", db.conversations, db.userMessages, db.assistantMessages, async () => {
             await db.userMessages.update(lastMessageId, { answerMessageId: message.id });
             await db.conversations.update(conversation.id, { lastMessageId: message.id });
-            const assistantMessage = createAssistantMessage(message.conversationId, message.content, lastMessageId, message.id, message.date);
+            const assistantMessage = createAssistantMessage(message.conversationId, message.thinking, message.content, lastMessageId, message.id, message.date);
             await db.assistantMessages.add(assistantMessage);
         });
     } else {
@@ -245,21 +248,6 @@ export async function editMessage(conversationId: ConversationID, editedMessageI
         if (editedMessage !== undefined) {
             const parentId = editedMessage.parentId;
             userMessage = await insertUserMessage(conversation, parentId, createMessage(conversationId, "user", content));
-            // const userMessage = createUserMessage(conversationId, content, parentId, false);
-            // // Set the editedMessage to inactive
-            // await db.userMessages.update(editedMessageId, { isActive: false });
-            // // Update the next messages of the parent answer
-            // if (parentId !== undefined) {
-            //     const lastAssistantMessage = await db.assistantMessages.get(parentId);
-            //     if (lastAssistantMessage !== undefined) {
-            //         lastAssistantMessage.nextMessageIds.push(userMessage.id);
-            //         await db.assistantMessages.update(parentId, { nextMessageIds: lastAssistantMessage.nextMessageIds });
-            //     } else {
-            //         throw new Error(`Can't find the parent message with the id "${parentId}"`);
-            //     }
-            // }
-            // // Update last message of the conversation
-            // await db.conversations.update(conversationId, { lastMessageId: userMessage.id })
         } else {
             throw new Error(`Can't edit the message because the id "${editedMessageId}" is not available`);
         }
@@ -267,11 +255,32 @@ export async function editMessage(conversationId: ConversationID, editedMessageI
     return userMessage;
 }
 
+
+export function extractThinking(content: string): { thinking: string | undefined, answer: string } {
+    let thinking: string | undefined = undefined;
+    let answer: string = "";
+    const indexOfStartThink = content.indexOf("<think>");
+    if (indexOfStartThink === -1)
+        answer = content;
+    else {
+        const indexOfLastThink = content.indexOf("</think>");
+        if (indexOfLastThink === -1) {
+            thinking = content.substring(indexOfStartThink + 7);
+        }
+        else {
+            thinking = content.substring(indexOfStartThink + 7, indexOfLastThink);
+            answer = content.substring(indexOfLastThink + 8);
+        }
+    }
+    return { thinking, answer };
+};
+
 export function createMessage(
     conversationId: ConversationID,
     role: Role,
     content: string,
     id: MessageID | undefined = undefined,
+    thinking: string | undefined = undefined,
     date: Date | undefined = undefined,
 ): Message {
     let messageId: MessageID;
@@ -284,7 +293,7 @@ export function createMessage(
         messageDate = new Date();
     else
         messageDate = date;
-    return { id: messageId, role, content, date: messageDate, conversationId };
+    return { id: messageId, role, thinking, content, date: messageDate, conversationId };
 }
 
 
@@ -298,7 +307,7 @@ function createUserMessage(
     answerMessageId: AssistantMessageID | undefined = undefined,
 ): UserMessage {
     return {
-        ...createMessage(conversationId, "user", content, id, date),
+        ...createMessage(conversationId, "user", content, id, undefined, date),
         role: "user",
         parentId: parentId,
         isActive: isActive,
@@ -308,13 +317,14 @@ function createUserMessage(
 
 function createAssistantMessage(
     conversationId: ConversationID,
+    thinking: string | undefined,
     content: string,
     parentId: UserMessageID,
     id: AssistantMessageID | undefined = undefined,
     date: Date | undefined = undefined,
 ): AssistantMessage {
     return {
-        ...createMessage(conversationId, "assistant", content, id, date),
+        ...createMessage(conversationId, "assistant", content, id, thinking, date),
         role: "assistant",
         parentId,
         nextMessageIds: []

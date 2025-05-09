@@ -33,7 +33,10 @@ function AnswerMessage({ assistantAnswer, conversationId }: { assistantAnswer: M
     return (
         <>
             {
-                assistantAnswer && assistantAnswer.conversationId == conversationId ? <AssistantMessage message={assistantAnswer} /> : undefined
+                (assistantAnswer && assistantAnswer.conversationId == conversationId) ?
+                    < AssistantMessage message={assistantAnswer}>
+                    </AssistantMessage>
+                    : undefined
             }
             <div ref={bottomRef}></div>
         </>

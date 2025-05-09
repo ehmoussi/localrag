@@ -1,6 +1,6 @@
 import React from "react";
 import { useChat } from "./use-chat";
-import { ConversationID, createMessage, Message } from "@/lib/db";
+import { ConversationID, createMessage, extractThinking, Message } from "@/lib/db";
 import ollama from 'ollama';
 
 
@@ -29,24 +29,28 @@ export function useAssistantStreaming() {
                 // Dispaly the assistant message currently streaming
                 if (buffer.length > BUFFER_STREAMING_SIZE) {
                     accumulateContent += buffer;
+                    const { thinking, answer } = extractThinking(accumulateContent);
                     chatDispatch({
                         type: "SET_ASSISTANT_ANSWER",
-                        payload: createMessage(currentConversationId, "assistant", accumulateContent, assistantId)
+                        payload: createMessage(currentConversationId, "assistant", answer, assistantId, thinking)
                     });
                     buffer = "";
                 }
             }
             if (buffer.length > 0) {
                 accumulateContent += buffer;
+                const { thinking, answer } = extractThinking(accumulateContent);
                 // Dispaly the assistant message currently streaming
-                chatDispatch({ type: "SET_ASSISTANT_ANSWER", payload: createMessage(currentConversationId, "assistant", accumulateContent, assistantId) });
+                chatDispatch({ type: "SET_ASSISTANT_ANSWER", payload: createMessage(currentConversationId, "assistant", answer, assistantId, thinking) });
             }
         } catch (error) {
             console.error("Failed to fetch assistant answer:", error);
         } finally {
             // Remove the streaming message
+            const { thinking, answer } = extractThinking(accumulateContent);
+            newMessage.thinking = thinking;
+            newMessage.content = answer;
             chatDispatch({ type: "SET_ASSISTANT_ANSWER", payload: undefined });
-            newMessage.content = accumulateContent;
         }
         return newMessage;
     }, [chatState.messages, chatDispatch]);

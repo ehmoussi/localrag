@@ -1,6 +1,6 @@
 import React from "react";
 import { useChat } from "./use-chat";
-import { addAssistantMessage, addUserMessage, ConversationID, createMessage, getConversation, Message, newConversation, updateConversationTitle } from "../../lib/db";
+import { addAssistantMessage, addUserMessage, ConversationID, createMessage, extractThinking, getConversation, Message, newConversation, updateConversationTitle } from "../../lib/db";
 import { setCurrentConversation } from "../../lib/storage";
 import ollama from 'ollama';
 import { AutoResizeTextarea } from "../../AutoResizeTextarea";
@@ -11,6 +11,7 @@ import { useModel } from "./use-model";
 import { ChatModelSelector } from "./ChatModelSelector";
 import { useStreaming } from "./use-streaming";
 import { useAssistantStreaming } from "./use-assistantstreaming";
+import { setDocumentTitle } from "@/lib/utils";
 
 
 
@@ -37,9 +38,8 @@ async function generateConversationTitle(currentModel: string, messages: Message
                 temperature: 0.3 // Lower for more consistent titles
             }
         });
-        const title = response.response.trim();//.replace(/^["']|["']$/g, '');
-        console.log(title);
-        return title;
+        const { answer } = extractThinking(response.response.trim());
+        return answer;
     } catch {
         return "New Conversation";
     }
@@ -88,14 +88,15 @@ export function ChatForm() {
             // Update the last message displayed
             // NOTE: the update should be put just after to avoid flashing the user when answer message and real message are substitued
             chatDispatch({ type: "ADD_MESSAGE", payload: assistantMessage });
-            // Update the title
+            setStreaming(false);
+            // Update the title of the conversation
             if (chatState.messages.length === 0) {
                 const title = await generateConversationTitle(modelState.currentModel, [...chatState.messages, userMessage, assistantMessage]);
                 await updateConversationTitle(currentConversationId, title);
+                setDocumentTitle(title);
             }
             // Update the messages in the db
             await addAssistantMessage(currentConversationId, assistantMessage);
-            setStreaming(false);
         }
     };
 

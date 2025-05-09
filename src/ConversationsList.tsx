@@ -5,6 +5,7 @@ import { Conversation, deleteConversation, getConversations, getMessages, newCon
 import React from "react";
 import { useChat } from "./components/chat/use-chat";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./components/ui/dropdown-menu";
+import { setDocumentTitle } from "./lib/utils";
 
 
 export function ConversationHeader() {
@@ -39,7 +40,9 @@ const ConversationItem = React.memo(({ conversation }: { conversation: Conversat
         const messages = await getMessages(conversation.id);
         chatDispatch({ type: "SET_MESSAGES", payload: messages });
         chatDispatch({ type: "SET_CONVERSATION", payload: conversation.id });
-    }, [chatDispatch, conversation.id]);
+        if (conversation.title !== "")
+            setDocumentTitle(conversation.title);
+    }, [chatDispatch, conversation.id, conversation.title]);
 
     const deleteClicked = async (event: React.FormEvent<HTMLDivElement>) => {
         event.preventDefault();

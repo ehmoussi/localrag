@@ -23,3 +23,5 @@ npm run dev
 - [ ] Add RAG feature
 - [x] Use markdown to display the answer of the assistant
 - [ ] Manage failures in general (add alerts to the user, impact on the db, ...)
+- [x] Manage the reasoning models with the `<think>` part
+- [ ] Add an in progress before streaming the answer

@@ -2,7 +2,7 @@ import { AutoResizeTextarea } from "@/AutoResizeTextarea";
 import { addAssistantMessage, editMessage, getMessages, getSiblingIds, Message, setUserMessageStatus } from "@/lib/db";
 import React, { useEffect } from "react";
 import { Button } from "../ui/button";
-import { ChevronLeft, ChevronRight, Copy, Pencil } from "lucide-react";
+import { ChevronLeft, ChevronRight, ChevronsUpDown, Copy, Pencil } from "lucide-react";
 import { useAssistantStreaming } from "./use-assistantstreaming";
 import { useModel } from "./use-model";
 import { useChat } from "./use-chat";
@@ -10,6 +10,26 @@ import Markdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { ScrollArea, ScrollBar } from "../ui/scroll-area";
 import { useStreaming } from "./use-streaming";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../ui/collapsible";
+
+
+export function ThinkingMessage({ thinking }: { thinking: string }) {
+    const [isOpen, setIsOpen] = React.useState<boolean>(true);
+
+    return (
+        <Collapsible open={isOpen} onOpenChange={setIsOpen} className="opacity-60">
+            <CollapsibleTrigger asChild>
+                <Button variant="ghost" size="sm">
+                    <ChevronsUpDown size={6} />
+                    <span className="text-sm">Thinking ...</span>
+                </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="max-w-[80%] rounded-md px-4 pb-6 self-start border-black-100 border text-sm">
+                {thinking}
+            </CollapsibleContent>
+        </Collapsible >
+    );
+}
 
 
 export function AssistantMessage({ message }: { message: Message }) {
@@ -22,6 +42,9 @@ export function AssistantMessage({ message }: { message: Message }) {
             <ScrollArea
                 className="max-w-[95%] rounded-md shadow-sm px-3 py-2 text-lg whitespace-pre-line self-start border-indigo-100 border text-black"
             >
+                {
+                    message.thinking && <ThinkingMessage thinking={message.thinking} />
+                }
                 <Markdown
                     components={{
                         code(props) {
@@ -48,7 +71,9 @@ export function AssistantMessage({ message }: { message: Message }) {
                             )
                         }
                     }}
-                >{message.content}</Markdown>
+                >
+                    {message.content}
+                </Markdown>
                 <ScrollBar orientation="horizontal" />
             </ScrollArea>
             <div
