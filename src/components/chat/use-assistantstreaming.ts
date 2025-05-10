@@ -29,7 +29,7 @@ export function useAssistantStreaming() {
 
     const streamAssistantMessage = (
         conversationId: ConversationID,
-        userMessage: Message,
+        messages: Message[],
         currentModel: string,
         finishedCallback: FinishedCallbackFn,
     ) => {
@@ -44,7 +44,6 @@ export function useAssistantStreaming() {
                 }
             }
         }
-        const messages = [...chatState.messages, userMessage];
         worker.postMessage({ type: "initialValues", payload: { conversationId, messages, currentModel } });
     };
 

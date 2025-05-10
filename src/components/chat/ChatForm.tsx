@@ -85,7 +85,7 @@ export function ChatForm() {
             await addUserMessage(currentConversationId, userMessage);
             streamAssistantMessage(
                 currentConversationId,
-                userMessage,
+                [...chatState.messages, userMessage],
                 modelState.currentModel,
                 async (assistantMessage: Message, currentModel: string) => {
                     // Update the last message displayed

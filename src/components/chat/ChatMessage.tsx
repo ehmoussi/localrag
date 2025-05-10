@@ -146,7 +146,7 @@ function UserMessageEditing({ message, setIsEditing }: { message: Message, setIs
                 setStreaming(true);
                 streamAssistantMessage(
                     message.conversationId,
-                    userMessage,
+                    newMessages,
                     modelState.currentModel,
                     async (assistantMessage: Message) => {
                         // Update the last message
