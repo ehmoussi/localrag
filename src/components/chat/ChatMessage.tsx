@@ -85,7 +85,7 @@ export function UserMessage({ message }: { message: Message }) {
         );
     else
         return (
-            <UserMessageDisplay message={message} onClickEdit={() => setIsEditing(!isEditing)} />
+            <UserMessageDisplay message={message} onClickEdit={() => setIsEditing((e) => !e)} />
         );
 }
 

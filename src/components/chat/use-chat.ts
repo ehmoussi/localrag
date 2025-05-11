@@ -1,16 +1,14 @@
-import { ConversationID, Message } from "../../lib/db";
+import { Message } from "../../lib/db";
 import React from "react";
 
 
 type ChatAction =
-    | { type: "SET_CONVERSATION", payload: ConversationID | undefined }
     | { type: "SET_MESSAGES", payload: Message[] }
     | { type: "ADD_MESSAGE", payload: Message }
     | { type: "SET_ASSISTANT_ANSWER", payload: Message | undefined }
 
 
 interface ChatState {
-    conversationId: ConversationID | undefined;
     messages: Message[];
     assistantAnswer: Message | undefined;
 }
@@ -24,15 +22,12 @@ interface IChatContext {
 export const ChatContext = React.createContext<IChatContext | undefined>(undefined);
 
 export const initialChatState: ChatState = {
-    conversationId: undefined,
     messages: [],
     assistantAnswer: undefined,
 };
 
 export function chatReducer(state: ChatState, action: ChatAction): ChatState {
     switch (action.type) {
-        case "SET_CONVERSATION":
-            return { ...state, conversationId: action.payload };
         case "SET_MESSAGES":
             return { ...state, messages: action.payload };
         case "ADD_MESSAGE":

@@ -10,6 +10,7 @@ import { StreamingProvider } from "./components/chat/StreamingProvider";
 
 
 function App() {
+
     return (
         <ChatProvider>
             <SidebarProvider>

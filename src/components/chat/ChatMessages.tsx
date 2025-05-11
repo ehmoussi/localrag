@@ -1,7 +1,9 @@
 import React from "react";
-import { ConversationID, Message } from "../../lib/db";
+import { ConversationID, getConversation, getMessages, Message } from "../../lib/db";
 import { useChat } from "./use-chat";
 import { AssistantMessage, UserMessage } from "./ChatMessage";
+import { useParams } from "react-router";
+import { setDocumentTitle } from "@/lib/utils";
 
 function Header() {
     return (
@@ -22,30 +24,58 @@ const MessageComp = React.memo(function MessageComp({ message }: { message: Mess
 });
 
 
-function AnswerMessage({ assistantAnswer, conversationId }: { assistantAnswer: Message | undefined, conversationId: ConversationID | undefined }) {
+function AnswerMessage() {
     const bottomRef = React.useRef<HTMLDivElement | null>(null);
+    const { chatState } = useChat();
+    const { conversationId } = useParams<{ conversationId: ConversationID }>();
 
     React.useEffect(() => {
         if (bottomRef.current)
             bottomRef.current.scrollIntoView({ behavior: "smooth" });
-    }, [assistantAnswer]);
+    }, [chatState.assistantAnswer]);
 
     return (
         <>
             {
-                (assistantAnswer && assistantAnswer.conversationId == conversationId) ?
-                    < AssistantMessage message={assistantAnswer}>
-                    </AssistantMessage>
+                (chatState.assistantAnswer && chatState.assistantAnswer.conversationId == conversationId) ?
+                    <>< AssistantMessage message={chatState.assistantAnswer} /><div ref={bottomRef}></div></>
                     : undefined
             }
-            <div ref={bottomRef}></div>
         </>
     );
 }
 
 
 export function ChatMessages() {
-    const { chatState } = useChat();
+    const { chatState, chatDispatch } = useChat();
+    const { conversationId } = useParams<{ conversationId: ConversationID }>();
+    console.log(`conversationId = ${conversationId}`);
+
+    React.useEffect(() => {
+        let isMounted = true;
+
+        const updateMessages = async () => {
+            if (isMounted) {
+                let title = "";
+                if (conversationId !== undefined) {
+                    const messages = await getMessages(conversationId);
+                    chatDispatch({ type: "SET_MESSAGES", payload: messages });
+                    const conversation = await getConversation(conversationId);
+                    if (conversation !== undefined)
+                        title = conversation.title;
+                } else {
+                    chatDispatch({ type: "SET_MESSAGES", payload: [] });
+                }
+                setDocumentTitle(title);
+            }
+        }
+        updateMessages();
+
+        return () => {
+            isMounted = false;
+        }
+    }, [conversationId, chatDispatch]);
+
     return (
         <div className="flex-1 content-center overflow-y-auto px-6">
             {
@@ -56,7 +86,7 @@ export function ChatMessages() {
                                 <MessageComp key={message.id} message={message} />
                             ))
                         }
-                        <AnswerMessage assistantAnswer={chatState.assistantAnswer} conversationId={chatState.conversationId} />
+                        <AnswerMessage />
                     </div> :
                     <Header />
             }

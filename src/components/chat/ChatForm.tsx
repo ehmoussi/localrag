@@ -12,6 +12,7 @@ import { ChatModelSelector } from "./ChatModelSelector";
 import { useStreaming } from "./use-streaming";
 import { useAssistantStreaming } from "./use-assistantstreaming";
 import { setDocumentTitle } from "@/lib/utils";
+import { useNavigate, useParams } from "react-router";
 
 
 
@@ -52,57 +53,63 @@ export function ChatForm() {
     const { isStreaming, setStreaming } = useStreaming();
     const { modelState } = useModel();
     const { streamAssistantMessage, abortAssistantMessage } = useAssistantStreaming();
+    const { conversationId } = useParams<{ conversationId: ConversationID }>();
+    const navigate = useNavigate();
 
     const getCurrentConversationId = React.useCallback(async (): Promise<ConversationID> => {
         let currentConversationId;
-        if (chatState.conversationId === undefined) {
+        if (conversationId === undefined) {
             currentConversationId = await newConversation();
-            chatDispatch({ type: "SET_CONVERSATION", payload: currentConversationId });
+            navigate(`/${currentConversationId}`);
             setCurrentConversation(currentConversationId);
         } else {
-            if (await getConversation(chatState.conversationId) !== undefined)
-                currentConversationId = chatState.conversationId;
+            if (await getConversation(conversationId) !== undefined)
+                currentConversationId = conversationId;
             else {
                 currentConversationId = await newConversation();
-                chatDispatch({ type: "SET_CONVERSATION", payload: currentConversationId });
+                navigate(`/${currentConversationId}`);
                 setCurrentConversation(currentConversationId);
             }
         }
         return currentConversationId;
-    }, [chatState.conversationId, chatDispatch]);
+    }, [conversationId, navigate]);
 
     const submitMessage = async () => {
-        if (input !== "") {
-            // if there is no model selected or a message is currently displayed
-            // then can't append a new message 
-            if (modelState.currentModel === undefined || isStreaming) return;
-            const currentConversationId = await getCurrentConversationId();
-            setInput("");
-            setStreaming(true);
-            // Display the user message
-            const userMessage = createMessage(currentConversationId, "user", input);
-            chatDispatch({ type: "ADD_MESSAGE", payload: userMessage });
-            await addUserMessage(currentConversationId, userMessage);
-            streamAssistantMessage(
-                currentConversationId,
-                [...chatState.messages, userMessage],
-                modelState.currentModel,
-                async (assistantMessage: Message, currentModel: string) => {
-                    // Update the last message displayed
-                    // NOTE: the update should be put just after to avoid flashing the user when answer message and real message are substitued
-                    chatDispatch({ type: "ADD_MESSAGE", payload: assistantMessage });
-                    setStreaming(false);
-                    // Update the title of the conversation
-                    if (chatState.messages.length === 0) {
-                        const title = await generateConversationTitle(currentModel, [...chatState.messages, userMessage, assistantMessage]);
-                        await updateConversationTitle(currentConversationId, title);
-                        setDocumentTitle(title);
-                    }
-                    // Update the messages in the db
-                    await addAssistantMessage(currentConversationId, assistantMessage);
+        // If the input is empty 
+        // or if there is no model selected 
+        // or if an answer is currently streaming
+        // then can't submit a new message 
+        if (input === "" || modelState.currentModel === undefined || isStreaming) return;
+        const currentConversationId = await getCurrentConversationId();
+        // Clean the user message before starting to stream
+        setInput("");
+        setStreaming(true);
+        // Display the user message
+        const userMessage = createMessage(currentConversationId, "user", input);
+        chatDispatch({ type: "ADD_MESSAGE", payload: userMessage });
+        await addUserMessage(currentConversationId, userMessage);
+        streamAssistantMessage(
+            currentConversationId,
+            [...chatState.messages, userMessage],
+            modelState.currentModel,
+            async (assistantMessage: Message, currentModel: string) => {
+                // Update the last message displayed
+                // NOTE: the update should be put at the beginning to avoid flashing the user 
+                // when answer message and real message are substitued
+                chatDispatch({ type: "ADD_MESSAGE", payload: assistantMessage });
+                setStreaming(false);
+                // Update the title of the conversation
+                if (chatState.messages.length === 0) {
+                    const title = await generateConversationTitle(
+                        currentModel, [...chatState.messages, userMessage, assistantMessage]
+                    );
+                    setDocumentTitle(title);
+                    await updateConversationTitle(currentConversationId, title);
                 }
-            );
-        }
+                // Update the messages in the db
+                await addAssistantMessage(currentConversationId, assistantMessage);
+            }
+        );
     };
 
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {

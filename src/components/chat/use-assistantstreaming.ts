@@ -8,7 +8,7 @@ type FinishedCallbackFn = (message: Message, currentModel: string) => Promise<vo
 
 
 export function useAssistantStreaming() {
-    const { chatState, chatDispatch } = useChat();
+    const { chatDispatch } = useChat();
     const workerPoolRef = React.useRef<Map<ConversationID, Worker>>(new Map());
 
     const getOrCreateWorker = React.useCallback((conversationId: ConversationID) => {

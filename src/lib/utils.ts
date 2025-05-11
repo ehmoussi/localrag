@@ -7,5 +7,8 @@ export function cn(...inputs: ClassValue[]) {
 
 
 export function setDocumentTitle(title: string) {
-    document.title = `LocalRag - ${title}`;
+    if (title === "")
+        document.title = `LocalRag`;
+    else
+        document.title = `LocalRag - ${title}`;
 }
