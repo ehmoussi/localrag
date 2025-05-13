@@ -1,89 +1,44 @@
 import React from "react";
 import { useChat } from "./use-chat";
-import { addAssistantMessage, addUserMessage, ConversationID, createMessage, extractThinking, getConversation, Message, newConversation, updateConversationTitle } from "../../lib/db";
+import { addUserMessage, ConversationID, createMessage, newConversation } from "../../lib/db";
 import { setCurrentConversation } from "../../lib/storage";
-import ollama from 'ollama';
 import { AutoResizeTextarea } from "../../AutoResizeTextarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 import { Button } from "../ui/button";
 import { ArrowUpIcon, CircleStopIcon, PaperclipIcon } from "lucide-react";
 import { useModel } from "./use-model";
 import { ChatModelSelector } from "./ChatModelSelector";
-import { useStreaming } from "./use-streaming";
 import { useAssistantStreaming } from "./use-assistantstreaming";
-import { setDocumentTitle } from "@/lib/utils";
-import { useNavigate, useParams } from "react-router";
+import { useNavigate } from "react-router";
 
 
 
-async function generateConversationTitle(currentModel: string, messages: Message[]): Promise<string> {
-    try {
-        let conversationText = "";
-        messages.forEach(msg => {
-            conversationText += `${msg.role}: ${msg.content}\n\n`;
-        });
-        const prompt = (
-            "Based on the conversation below, generate a short, descriptive title (5 words or less). "
-            + "- Respond with ONLY the title text\n"
-            + "- No additional explanation\n"
-            + "- No quotes\n"
-            + "- Answer with the same language as the conversation.\n\n"
-            + conversationText + "\n\n"
-        );
-        const response = await ollama.generate({
-            model: currentModel,
-            prompt: prompt,
-            stream: false, // TODO: replace by true
-            options: {
-                temperature: 0.3 // Lower for more consistent titles
-            }
-        });
-        const { answer } = extractThinking(response.response.trim());
-        return answer;
-    } catch {
-        return "New Conversation";
-    }
-}
-
-
-export function ChatForm() {
+export function ChatForm({ conversationId }: { conversationId: ConversationID | undefined }) {
     const fileInputRef = React.useRef<HTMLInputElement | null>(null);
     const [input, setInput] = React.useState<string>("");
     const { chatState, chatDispatch } = useChat();
-    const { isStreaming, setStreaming } = useStreaming();
     const { modelState } = useModel();
     const { streamAssistantMessage, abortAssistantMessage } = useAssistantStreaming();
-    const { conversationId } = useParams<{ conversationId: ConversationID }>();
     const navigate = useNavigate();
 
-    const getCurrentConversationId = React.useCallback(async (): Promise<ConversationID> => {
-        let currentConversationId;
-        if (conversationId === undefined) {
-            currentConversationId = await newConversation();
-            navigate(`/${currentConversationId}`);
-            setCurrentConversation(currentConversationId);
-        } else {
-            if (await getConversation(conversationId) !== undefined)
-                currentConversationId = conversationId;
-            else {
-                currentConversationId = await newConversation();
-                navigate(`/${currentConversationId}`);
-                setCurrentConversation(currentConversationId);
-            }
-        }
-        return currentConversationId;
-    }, [conversationId, navigate]);
+    const createNewConversation = React.useCallback(async (): Promise<ConversationID> => {
+        const newConversationId = await newConversation();
+        navigate(`/${newConversationId}`);
+        setCurrentConversation(newConversationId);
+        return newConversationId;
+    }, [navigate]);
 
-    const submitMessage = async () => {
-        // If the input is empty 
+    const submitMessage = async (currentConversationId: ConversationID) => {
+        // If the input is empty get the message from the local storage
         // or if there is no model selected 
         // or if an answer is currently streaming
         // then can't submit a new message 
-        if (input === "" || modelState.currentModel === undefined || isStreaming) return;
-        const currentConversationId = await getCurrentConversationId();
+        if (input === ""
+            || modelState.currentModel === undefined
+            || chatState.isStreaming.has(currentConversationId)
+        ) return;
         // Clean the user message before starting to stream
         setInput("");
-        setStreaming(true);
         // Display the user message
         const userMessage = createMessage(currentConversationId, "user", input);
         chatDispatch({ type: "ADD_MESSAGE", payload: userMessage });
@@ -92,32 +47,18 @@ export function ChatForm() {
             currentConversationId,
             [...chatState.messages, userMessage],
             modelState.currentModel,
-            async (assistantMessage: Message, currentModel: string) => {
-                // Update the last message displayed
-                // NOTE: the update should be put at the beginning to avoid flashing the user 
-                // when answer message and real message are substitued
-                chatDispatch({ type: "ADD_MESSAGE", payload: assistantMessage });
-                setStreaming(false);
-                // Update the title of the conversation
-                if (chatState.messages.length === 0) {
-                    const title = await generateConversationTitle(
-                        currentModel, [...chatState.messages, userMessage, assistantMessage]
-                    );
-                    setDocumentTitle(title);
-                    await updateConversationTitle(currentConversationId, title);
-                }
-                // Update the messages in the db
-                await addAssistantMessage(currentConversationId, assistantMessage);
-            }
         );
     };
 
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
-        if (!isStreaming)
-            await submitMessage();
-        else {
-            const currentConversationId = await getCurrentConversationId();
+        let currentConversationId = conversationId;
+        if (currentConversationId === undefined) {
+            currentConversationId = await createNewConversation();
+        }
+        if (!chatState.isStreaming.has(currentConversationId)) {
+            await submitMessage(currentConversationId);
+        } else {
             abortAssistantMessage(currentConversationId);
         }
     };
@@ -125,7 +66,9 @@ export function ChatForm() {
     const handleKeyDown = async (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
         if (event.ctrlKey && event.key === "Enter") {
             event.preventDefault();
-            await submitMessage();
+            let currentConversationId = conversationId;
+            if (currentConversationId === undefined) currentConversationId = await createNewConversation();
+            await submitMessage(currentConversationId);
         }
     };
 
@@ -135,6 +78,8 @@ export function ChatForm() {
     const handleFileButtonClick = () => {
     };
 
+    const isDisabled = conversationId !== undefined && chatState.isStreaming.has(conversationId);
+
     return (
         <form
             onSubmit={handleSubmit}
@@ -142,7 +87,7 @@ export function ChatForm() {
         >
             <div className="flex w-full items-center">
                 <AutoResizeTextarea
-                    disabled={isStreaming}
+                    disabled={isDisabled}
                     onKeyDown={handleKeyDown}
                     onChange={(v) => { setInput(v) }}
                     value={input}
@@ -150,11 +95,11 @@ export function ChatForm() {
                     className="placeholder:text-muted-foreground flex-1 bg-transparent focus:outline-none"
                 />
                 <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" multiple />
-                <ChatModelSelector />
+                <ChatModelSelector isDisabled={isDisabled} />
                 <Tooltip>
                     <TooltipTrigger asChild>
                         <Button
-                            disabled={isStreaming}
+                            disabled={isDisabled}
                             type="button"
                             variant="ghost"
                             size="sm"
@@ -170,13 +115,13 @@ export function ChatForm() {
                     <TooltipTrigger asChild>
                         <Button variant="ghost" size="sm" className="size-6 rounded-full">
                             {
-                                isStreaming ?
+                                isDisabled ?
                                     <CircleStopIcon size={24} /> :
                                     <ArrowUpIcon size={24} />
                             }
                         </Button>
                     </TooltipTrigger>
-                    <TooltipContent sideOffset={12}>{isStreaming ? "Abort" : "Submit"}</TooltipContent>
+                    <TooltipContent sideOffset={12}>{isDisabled ? "Abort" : "Submit"}</TooltipContent>
                 </Tooltip>
             </div>
         </form>

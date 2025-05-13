@@ -3,12 +3,11 @@ import { useModel } from "./use-model";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "../ui/select";
 import ollama from 'ollama';
 import { getOllamaLastModel, setOllamaLastModel } from "@/lib/storage";
-import { useStreaming } from "./use-streaming";
 
 
-export function ChatModelSelector() {
-    const { isStreaming } = useStreaming();
+export function ChatModelSelector({ isDisabled }: { isDisabled: boolean }) {
     const { modelState, modelDispatch } = useModel();
+
 
     // Fetch all the models available
     React.useEffect(() => {
@@ -54,7 +53,7 @@ export function ChatModelSelector() {
 
     return (
         <Select
-            disabled={isStreaming}
+            disabled={isDisabled}
             value={modelState.currentModel ? modelState.currentModel : ""}
             onValueChange={setCurrentModel}>
             <SelectTrigger className="w-[140px]">

@@ -1,5 +1,5 @@
 import { AutoResizeTextarea } from "@/AutoResizeTextarea";
-import { addAssistantMessage, editMessage, getMessages, getSiblingIds, Message, setUserMessageStatus } from "@/lib/db";
+import { ConversationID, editMessage, getMessages, getSiblingIds, Message, setUserMessageStatus } from "@/lib/db";
 import React, { useEffect } from "react";
 import { Button } from "../ui/button";
 import { ChevronLeft, ChevronRight, ChevronsUpDown, Copy, Pencil } from "lucide-react";
@@ -9,8 +9,8 @@ import { useChat } from "./use-chat";
 import Markdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { ScrollArea, ScrollBar } from "../ui/scroll-area";
-import { useStreaming } from "./use-streaming";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../ui/collapsible";
+import { useParams } from "react-router";
 
 
 
@@ -80,22 +80,19 @@ export function AssistantMessage({ message }: { message: Message }) {
 export function UserMessage({ message }: { message: Message }) {
     const [isEditing, setIsEditing] = React.useState(false);
     if (isEditing)
-        return (
-            <UserMessageEditing message={message} setIsEditing={setIsEditing} />
-        );
+        return <UserMessageEditing message={message} setIsEditing={setIsEditing} />;
     else
-        return (
-            <UserMessageDisplay message={message} onClickEdit={() => setIsEditing((e) => !e)} />
-        );
+        return <UserMessageDisplay message={message} onClickEdit={() => setIsEditing((e) => !e)} />;
 }
 
 
 function UserMessageDisplay({ message, onClickEdit }: { message: Message, onClickEdit: () => void }) {
     const [isHovering, setIsHovering] = React.useState<boolean>(false);
-    const { isStreaming } = useStreaming();
+    const { chatState } = useChat();
+    const isDisabled = chatState.isStreaming.has(message.conversationId);
     return (
         <div className="group flex flex-col"
-            onMouseEnter={() => { setIsHovering(!isStreaming) }}
+            onMouseEnter={() => { setIsHovering(!isDisabled) }}
             onMouseLeave={() => { setIsHovering(false) }}
         >
             <div
@@ -129,31 +126,24 @@ function UserMessageDisplay({ message, onClickEdit }: { message: Message, onClic
 }
 
 function UserMessageEditing({ message, setIsEditing }: { message: Message, setIsEditing: (isEditing: boolean) => void }) {
+    const { conversationId } = useParams<{ conversationId: ConversationID }>();
     const [input, setInput] = React.useState(message.content);
     const { chatDispatch } = useChat();
     const { streamAssistantMessage } = useAssistantStreaming();
     const { modelState } = useModel();
-    const { setStreaming } = useStreaming();
 
     async function submitMessage() {
         setIsEditing(false);
-        if (modelState.currentModel !== undefined) {
-            const userMessage = await editMessage(message.conversationId, message.id, input);
+        if (modelState.currentModel !== undefined && conversationId !== undefined) {
+            const userMessage = await editMessage(conversationId, message.id, input);
             if (userMessage !== undefined) {
                 // Update the messages because the children of the user message are not the same anymore
-                const newMessages = await getMessages(message.conversationId);
+                const newMessages = await getMessages(conversationId);
                 chatDispatch({ type: "SET_MESSAGES", payload: newMessages });
-                setStreaming(true);
                 streamAssistantMessage(
-                    message.conversationId,
+                    conversationId,
                     newMessages,
-                    modelState.currentModel,
-                    async (assistantMessage: Message) => {
-                        // Update the last message
-                        chatDispatch({ type: "ADD_MESSAGE", payload: assistantMessage });
-                        await addAssistantMessage(userMessage.conversationId, assistantMessage);
-                        setStreaming(false);
-                    }
+                    modelState.currentModel
                 );
             } else {
                 console.error("Failed to create the user message");

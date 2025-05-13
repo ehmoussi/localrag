@@ -16,8 +16,9 @@ export function ConversationHeader() {
     const createNewConversation = React.useCallback(async (event: React.FormEvent<HTMLAnchorElement>) => {
         event.preventDefault();
         const conversationId = await newConversation();
+        chatDispatch({ type: "SET_MESSAGES", payload: [] });
+        chatDispatch({ type: "SET_ASSISTANT_ANSWER", payload: undefined });
         navigate(`/${conversationId}`);
-        chatDispatch({ type: "SET_MESSAGES", payload: [] })
     }, [chatDispatch, navigate]);
 
     return (
@@ -34,10 +35,9 @@ export function ConversationHeader() {
 }
 
 
-const ConversationItem = React.memo(({ conversationId, title }: { conversationId: ConversationID, title: string }) => {
+const ConversationItem = React.memo(({ conversationId, title, isActive }: { conversationId: ConversationID, title: string, isActive: boolean }) => {
     const { chatDispatch } = useChat();
     const { terminateWorker } = useAssistantStreaming();
-    const { conversationId: activeConversationId } = useParams();
     const navigate = useNavigate();
 
     const deleteClicked = async (event: React.FormEvent<HTMLDivElement>) => {
@@ -48,22 +48,21 @@ const ConversationItem = React.memo(({ conversationId, title }: { conversationId
         navigate("/");
     };
 
-    const isSelected = conversationId === activeConversationId;
     return (
         <SidebarMenuItem>
             <SidebarMenuButton
                 asChild
-                isActive={isSelected}
+                isActive={isActive}
                 tooltip={title}>
                 <Link to={`/${conversationId}`}><span>{title}</span></Link>
             </SidebarMenuButton>
             <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                    <SidebarMenuAction showOnHover={!isSelected}>
+                    <SidebarMenuAction showOnHover={!isActive}>
                         <MoreHorizontal />
                     </SidebarMenuAction>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent side="right" align="start" className="text-red">
+                <DropdownMenuContent side="right" align="start">
                     <DropdownMenuItem onClick={deleteClicked}>
                         <Trash />
                         <span >Delete</span>
@@ -77,6 +76,8 @@ const ConversationItem = React.memo(({ conversationId, title }: { conversationId
 
 
 export function ConversationsList() {
+    const { conversationId } = useParams<{ conversationId: ConversationID }>();
+
     const conversations = useLiveQuery(async (): Promise<Conversation[]> => {
         return await getConversations();
     }, []);
@@ -86,9 +87,13 @@ export function ConversationsList() {
             <SidebarGroupLabel>Conversations</SidebarGroupLabel>
             <SidebarGroupContent>
                 <SidebarMenu>
-                    {conversations &&
+                    {conversations !== undefined &&
                         conversations.map((conversation) => (
-                            <ConversationItem key={conversation.id} conversationId={conversation.id} title={conversation.title} />
+                            <ConversationItem
+                                key={conversation.id}
+                                conversationId={conversation.id}
+                                title={conversation.title}
+                                isActive={conversationId !== undefined && conversation.id === conversationId} />
                         ))
                     }
                 </SidebarMenu>
