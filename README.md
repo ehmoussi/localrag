@@ -16,7 +16,7 @@ npm run dev
 # TODOs
 
 - [x] Update title of a conversation 
-- [ ] Workers to manage the assistant streaming answer
+- [x] Workers to manage the assistant streaming answer
 - [x] Abort assistant streaming answer
 - [ ] Upload of files
 - [x] Edit user messages

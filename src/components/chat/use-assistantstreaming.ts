@@ -10,30 +10,30 @@ type StreamMessageType =
     | { type: "title", conversationId: ConversationID, payload: string }
     | { type: "completed", conversationId: ConversationID, payload: Message };
 
+export const WorkerPoolContext = React.createContext<Map<ConversationID, Worker> | undefined>(undefined);
 
 export function useAssistantStreaming() {
     const { chatState, chatDispatch } = useChat();
-    const workerPoolRef = React.useRef<Map<ConversationID, Worker>>(new Map());
+    const workerPool = React.useContext(WorkerPoolContext);
     const { conversationId: currentConversationId } = useParams<{ conversationId: ConversationID }>();
 
+    if (workerPool === undefined) throw new Error("useAssistantStreaming can't be used outside a WorkerPoolProvider");
+
     const getOrCreateWorker = React.useCallback((conversationId: ConversationID): Worker => {
-        const worker = workerPoolRef.current.get(conversationId);
+        const worker = workerPool.get(conversationId);
         if (worker === undefined) {
-            console.log(`create a new worker for the conversation ${conversationId}`);
             const newWorker = new Worker({ name: conversationId.toString() });
-            workerPoolRef.current.set(conversationId, newWorker);
+            workerPool.set(conversationId, newWorker);
             return newWorker;
         }
         return worker;
-    }, []);
+    }, [workerPool]);
 
-    const setOnMessage = (worker: Worker, conversationId: ConversationID, receiverConversationId: ConversationID | undefined) => {
+    const setOnMessage = React.useCallback((worker: Worker, conversationId: ConversationID, receiverConversationId: ConversationID | undefined) => {
         if (conversationId === receiverConversationId) {
             worker.onmessage = async function (event: MessageEvent<StreamMessageType>) {
-                console.log(`conversationId = ${conversationId}`);
                 switch (event.data.type) {
                     case "streaming":
-                        // console.log(`Received: ${event.data.payload.content}`);
                         chatDispatch({ type: "SET_ASSISTANT_ANSWER", payload: event.data.payload });
                         break;
                     case "title": {
@@ -61,55 +61,44 @@ export function useAssistantStreaming() {
                 };
             }
         }
-    };
+    }, [chatDispatch]);
 
-    const updateWorkerOnMessage = (receiverConversationId: ConversationID | undefined) => {
-        const workerPool = workerPoolRef.current;
+    const updateWorkerOnMessage = React.useCallback((receiverConversationId: ConversationID | undefined) => {
         for (const [conversationId, worker] of workerPool.entries()) {
             setOnMessage(worker, conversationId, receiverConversationId);
         }
-    };
+    }, [workerPool, setOnMessage]);
 
     const abortAssistantMessage = React.useCallback((conversationId: ConversationID) => {
-        const worker = workerPoolRef.current.get(conversationId);
+        const worker = workerPool.get(conversationId);
         if (worker !== undefined) worker.postMessage({ type: "abort" });
-    }, []);
+    }, [workerPool]);
 
-    const streamAssistantMessage = (conversationId: ConversationID, messages: Message[], currentModel: string) => {
+    const streamAssistantMessage = React.useCallback((conversationId: ConversationID, messages: Message[], currentModel: string) => {
         if (!chatState.isStreaming.has(conversationId)) {
-            console.log(`get or create the worker for the conversation "${conversationId}"`);
+            // Clean other workers to avoid the update of the ui from other conversations
             updateWorkerOnMessage(undefined);
             const worker = getOrCreateWorker(conversationId);
+            // Set the onMessage callback for the current conversation
             setOnMessage(worker, conversationId, currentConversationId);
-            console.log("start the streaming ")
+            // Start the streaming
             chatDispatch({ type: "ADD_CONVERSATION_STREAMING", payload: conversationId });
             worker.postMessage({ type: "initialValues", payload: { conversationId, messages, currentModel } });
         }
-    };
+    }, [updateWorkerOnMessage, getOrCreateWorker, setOnMessage, currentConversationId, chatState.isStreaming, chatDispatch]);
 
     const terminateWorker = React.useCallback((conversationId: ConversationID) => {
-        const worker = workerPoolRef.current.get(conversationId);
+        const worker = workerPool.get(conversationId);
         if (worker !== undefined) {
             worker.terminate();
-            workerPoolRef.current.delete(conversationId);
+            workerPool.delete(conversationId);
         }
-    }, []);
+    }, [workerPool]);
 
     React.useEffect(() => {
         // Clean other workers to avoid the update of the ui from other conversations
         updateWorkerOnMessage(currentConversationId);
-    }, [currentConversationId]);
-
-    // Clean the pool of workers when unmounting
-    React.useEffect(() => {
-        const workerPool = workerPoolRef.current;
-        return () => {
-            workerPool.forEach((worker) => {
-                worker.terminate();
-            });
-            workerPool.clear();
-        };
-    }, []);
+    }, [currentConversationId, updateWorkerOnMessage]);
 
     return { streamAssistantMessage, abortAssistantMessage, terminateWorker };
 }
