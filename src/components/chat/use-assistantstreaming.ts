@@ -74,18 +74,26 @@ export function useAssistantStreaming() {
         if (worker !== undefined) worker.postMessage({ type: "abort" });
     }, [workerPool]);
 
-    const streamAssistantMessage = React.useCallback((conversationId: ConversationID, messages: Message[], currentModel: string) => {
-        if (!chatState.isStreaming.has(conversationId)) {
-            // Clean other workers to avoid the update of the ui from other conversations
-            updateWorkerOnMessage(undefined);
-            const worker = getOrCreateWorker(conversationId);
-            // Set the onMessage callback for the current conversation
-            setOnMessage(worker, conversationId, currentConversationId);
-            // Start the streaming
-            chatDispatch({ type: "ADD_CONVERSATION_STREAMING", payload: conversationId });
-            worker.postMessage({ type: "initialValues", payload: { conversationId, messages, currentModel } });
-        }
-    }, [updateWorkerOnMessage, getOrCreateWorker, setOnMessage, currentConversationId, chatState.isStreaming, chatDispatch]);
+    const streamAssistantMessage = React.useCallback(
+        (conversationId: ConversationID, messages: Message[], currentModel: string) => {
+            if (!chatState.isStreaming.has(conversationId)) {
+                // Clean other workers to avoid the update of the ui from other conversations
+                updateWorkerOnMessage(undefined);
+                const worker = getOrCreateWorker(conversationId);
+                // Set the onMessage callback for the current conversation
+                setOnMessage(worker, conversationId, currentConversationId);
+                // Start the streaming
+                chatDispatch({ type: "ADD_CONVERSATION_STREAMING", payload: conversationId });
+                worker.postMessage({ type: "initialValues", payload: { conversationId, messages, currentModel } });
+            }
+        }, [
+        updateWorkerOnMessage,
+        getOrCreateWorker,
+        setOnMessage,
+        currentConversationId,
+        chatState.isStreaming,
+        chatDispatch
+    ]);
 
     const terminateWorker = React.useCallback((conversationId: ConversationID) => {
         const worker = workerPool.get(conversationId);

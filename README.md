@@ -18,7 +18,8 @@ npm run dev
 - [x] Update title of a conversation 
 - [x] Workers to manage the assistant streaming answer
 - [x] Abort assistant streaming answer
-- [ ] Upload of files
+- [x] Upload of files
+- [ ] Upload of binary files (pdf, ...)
 - [x] Edit user messages
 - [ ] Add RAG feature
 - [x] Use markdown to display the answer of the assistant

@@ -10,12 +10,15 @@ import { useModel } from "./use-model";
 import { ChatModelSelector } from "./ChatModelSelector";
 import { useAssistantStreaming } from "./use-assistantstreaming";
 import { useNavigate } from "react-router";
+import { transformFilesToXmlContent } from "@/lib/filecontent";
+import { ChatFileTags } from "./ChatFileTags";
 
 
 
 export function ChatForm({ conversationId }: { conversationId: ConversationID | undefined }) {
     const fileInputRef = React.useRef<HTMLInputElement | null>(null);
     const [input, setInput] = React.useState<string>("");
+    const [inputFiles, setInputFiles] = React.useState<File[]>([]);
     const { chatState, chatDispatch } = useChat();
     const { modelState } = useModel();
     const { streamAssistantMessage, abortAssistantMessage } = useAssistantStreaming();
@@ -28,19 +31,21 @@ export function ChatForm({ conversationId }: { conversationId: ConversationID | 
         return newConversationId;
     }, [navigate]);
 
-    const submitMessage = async (currentConversationId: ConversationID) => {
-        // If the input is empty get the message from the local storage
-        // or if there is no model selected 
-        // or if an answer is currently streaming
-        // then can't submit a new message 
-        if (input === ""
-            || modelState.currentModel === undefined
-            || chatState.isStreaming.has(currentConversationId)
+    const submitMessage = async () => {
+        // if an answer is currently streaming then can't submit a new message
+        if (
+            (input === "" && inputFiles.length === 0)
+            || (modelState.currentModel === undefined)
+            || (conversationId !== undefined && chatState.isStreaming.has(conversationId))
         ) return;
+        let currentConversationId = conversationId;
+        if (currentConversationId === undefined) currentConversationId = await createNewConversation();
+        const files = { metadata: inputFiles, content: await transformFilesToXmlContent(inputFiles) };
         // Clean the user message before starting to stream
         setInput("");
+        setInputFiles([]);
         // Display the user message
-        const userMessage = createMessage(currentConversationId, "user", input);
+        const userMessage = createMessage(currentConversationId, "user", input, files);
         chatDispatch({ type: "ADD_MESSAGE", payload: userMessage });
         await addUserMessage(currentConversationId, userMessage);
         streamAssistantMessage(
@@ -52,30 +57,33 @@ export function ChatForm({ conversationId }: { conversationId: ConversationID | 
 
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
-        let currentConversationId = conversationId;
-        if (currentConversationId === undefined) {
-            currentConversationId = await createNewConversation();
-        }
-        if (!chatState.isStreaming.has(currentConversationId)) {
-            await submitMessage(currentConversationId);
+        if (conversationId === undefined || !chatState.isStreaming.has(conversationId)) {
+            await submitMessage();
         } else {
-            abortAssistantMessage(currentConversationId);
+            abortAssistantMessage(conversationId);
         }
     };
 
     const handleKeyDown = async (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
         if (event.ctrlKey && event.key === "Enter") {
             event.preventDefault();
-            let currentConversationId = conversationId;
-            if (currentConversationId === undefined) currentConversationId = await createNewConversation();
-            await submitMessage(currentConversationId);
+            await submitMessage();
         }
     };
 
-    const handleFileUpload = () => {
+    const handleFileUpload = async (event: React.FormEvent<HTMLInputElement>) => {
+        const files = (event.target as HTMLInputElement).files;
+        if (files !== null)
+            setInputFiles([...inputFiles, ...Array.from(files)]);
+    };
+
+    const handleFileRemoved = (filename: string) => {
+        setInputFiles(inputFiles.filter((f) => f.name !== filename));
     };
 
     const handleFileButtonClick = () => {
+        if (fileInputRef.current !== null)
+            fileInputRef.current.click();
     };
 
     const isDisabled = conversationId !== undefined && chatState.isStreaming.has(conversationId);
@@ -83,7 +91,7 @@ export function ChatForm({ conversationId }: { conversationId: ConversationID | 
     return (
         <form
             onSubmit={handleSubmit}
-            className="border-input bg-background focus-within:ring-ring/10 relative mx-6 mb-6 flex flex-col items-center rounded-[10px] border px-3 py-1.5 pr-8 text-sm focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-0"
+            className="border-input bg-background focus-within:ring-ring/10 relative mx-6 mb-6 flex flex-col items-start rounded-[10px] border px-3 py-1.5 pr-8 text-sm focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-0"
         >
             <div className="flex w-full items-center">
                 <AutoResizeTextarea
@@ -124,6 +132,16 @@ export function ChatForm({ conversationId }: { conversationId: ConversationID | 
                     <TooltipContent sideOffset={12}>{isDisabled ? "Abort" : "Submit"}</TooltipContent>
                 </Tooltip>
             </div>
+            <ChatFileTags files={inputFiles} onRemove={handleFileRemoved} />
+            {/* <div className="w-full flex flex-wrap gap-2 mb-3">
+                {
+                    inputFiles.map((f) => {
+                        return (
+                            <FileTag key={f.name} filename={f.name} onRemove={() => handleFileRemoved(f.name)} />
+                        );
+                    })
+                }
+            </div> */}
         </form>
     );
 }

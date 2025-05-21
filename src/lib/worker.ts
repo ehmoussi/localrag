@@ -1,5 +1,5 @@
-import { addAssistantMessage, ConversationID, createMessage, extractThinking, Message, updateConversationTitle } from "./db";
-import ollama from "ollama";
+import { addAssistantMessage, ConversationID, createMessage, extractThinking, getMessageContent, Message, updateConversationTitle } from "./db";
+import ollama from 'ollama/browser';
 
 const BUFFER_STREAMING_SIZE: number = 30;
 
@@ -27,13 +27,20 @@ self.onmessage = async function (event: MessageEvent<WorkerAssistantStreamingMes
 async function streamOllamaAnswer(currentConversationId: ConversationID, messages: Message[], currentModel: string) {
     const assistantId = crypto.randomUUID();
     let accumulateContent = "";
-    const newMessage = createMessage(currentConversationId, "assistant", "", assistantId);
+    const newMessage = createMessage(currentConversationId, "assistant", "", undefined, assistantId);
     try {
-        self.postMessage({ type: "streaming", conversationId: currentConversationId, payload: createMessage(currentConversationId, "assistant", "", assistantId) });
+        self.postMessage({
+            type: "streaming",
+            conversationId: currentConversationId,
+            payload: createMessage(currentConversationId, "assistant", "", undefined, assistantId)
+        });
         // Send the user message
+        const adaptedMessages = messages.map((m) => {
+            return { ...m, content: getMessageContent(m) };
+        });
         const response = await ollama.chat({
             model: currentModel,
-            messages: messages,
+            messages: adaptedMessages,
             stream: true,
         });
         let buffer = "";
@@ -43,7 +50,18 @@ async function streamOllamaAnswer(currentConversationId: ConversationID, message
             if (buffer.length > BUFFER_STREAMING_SIZE) {
                 accumulateContent += buffer;
                 const { thinking, answer } = extractThinking(accumulateContent);
-                self.postMessage({ type: "streaming", conversationId: currentConversationId, payload: createMessage(currentConversationId, "assistant", answer, assistantId, thinking) });
+                self.postMessage({
+                    type: "streaming",
+                    conversationId: currentConversationId,
+                    payload: createMessage(
+                        currentConversationId,
+                        "assistant",
+                        answer,
+                        undefined,
+                        assistantId,
+                        thinking
+                    )
+                });
                 buffer = "";
             }
         }
@@ -51,7 +69,11 @@ async function streamOllamaAnswer(currentConversationId: ConversationID, message
             accumulateContent += buffer;
             const { thinking, answer } = extractThinking(accumulateContent);
             // Dispaly the assistant message currently streaming
-            self.postMessage({ type: "streaming", conversationId: currentConversationId, payload: createMessage(currentConversationId, "assistant", answer, assistantId, thinking) });
+            self.postMessage({
+                type: "streaming",
+                conversationId: currentConversationId,
+                payload: createMessage(currentConversationId, "assistant", answer, undefined, assistantId, thinking)
+            });
         }
     } catch (error) {
         console.error("Failed to fetch assistant answer:", error);
@@ -59,7 +81,7 @@ async function streamOllamaAnswer(currentConversationId: ConversationID, message
         // Remove the streaming message
         const { thinking, answer } = extractThinking(accumulateContent);
         newMessage.thinking = thinking;
-        newMessage.content = answer;
+        newMessage.content.message = answer;
     }
     await addAssistantMessage(currentConversationId, newMessage);
     // Generate a title if there is no answer yet
@@ -75,7 +97,7 @@ async function generateConversationTitle(currentModel: string, messages: Message
     try {
         let conversationText = "";
         messages.forEach(msg => {
-            conversationText += `${msg.role}: ${msg.content}\n\n`;
+            conversationText += `${msg.role}: ${getMessageContent(msg)}\n\n`;
         });
         const prompt = (
             "Based on the conversation below, generate a short, descriptive title (5 words or less). "

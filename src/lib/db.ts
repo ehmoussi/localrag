@@ -16,10 +16,20 @@ export interface Conversation {
     lastMessageId: MessageID | undefined;
 }
 
+interface MessageContent {
+    message: string;
+    files: MessageFiles;
+}
+
+interface MessageFiles {
+    metadata: File[];
+    content: string;
+}
+
 interface UserMessage {
     id: UserMessageID;
     role: Role & "user";
-    content: string;
+    content: MessageContent;
     thinking: string | undefined;
     date: Date;
     conversationId: ConversationID;
@@ -31,7 +41,7 @@ interface UserMessage {
 interface AssistantMessage {
     id: AssistantMessageID;
     role: Role & "assistant";
-    content: string;
+    content: MessageContent;
     thinking: string | undefined;
     date: Date;
     conversationId: ConversationID;
@@ -42,7 +52,7 @@ interface AssistantMessage {
 export interface Message {
     id: MessageID;
     role: Role;
-    content: string;
+    content: MessageContent;
     thinking: string | undefined;
     date: Date;
     conversationId: ConversationID;
@@ -177,7 +187,11 @@ export async function getMessages(conversationId: ConversationID): Promise<Messa
 }
 
 
-async function insertUserMessage(conversation: Conversation, lastMessageId: AssistantMessageID | undefined, message: Message): Promise<UserMessage | undefined> {
+async function insertUserMessage(
+    conversation: Conversation,
+    lastMessageId: AssistantMessageID | undefined,
+    message: Message,
+): Promise<UserMessage | undefined> {
     let userMessage: UserMessage | undefined;
     await db.transaction("rw", db.conversations, db.userMessages, db.assistantMessages, async () => {
         let activeMessage: UserMessage | undefined;
@@ -206,7 +220,14 @@ async function insertUserMessage(conversation: Conversation, lastMessageId: Assi
         if (activeMessage !== undefined) {
             db.userMessages.update(activeMessage.id, { isActive: false });
         }
-        userMessage = createUserMessage(message.conversationId, message.content, lastMessageId, true, message.id, message.date);
+        userMessage = createUserMessage(
+            message.conversationId,
+            message.content,
+            lastMessageId,
+            true,
+            message.id,
+            message.date
+        );
         await db.userMessages.add(userMessage);
     });
     return userMessage;
@@ -240,14 +261,19 @@ export async function addAssistantMessage(conversationId: ConversationID, messag
 
 
 
-export async function editMessage(conversationId: ConversationID, editedMessageId: UserMessageID, content: string): Promise<UserMessage | undefined> {
+export async function editMessage(
+    conversationId: ConversationID,
+    editedMessageId: UserMessageID,
+    content: string,
+    files: MessageFiles | undefined,
+): Promise<UserMessage | undefined> {
     let userMessage: UserMessage | undefined;
     await db.transaction("rw", db.conversations, db.userMessages, db.assistantMessages, async () => {
         const conversation = await getConversationWithError(conversationId);
         const editedMessage = await db.userMessages.get(editedMessageId);
         if (editedMessage !== undefined) {
             const parentId = editedMessage.parentId;
-            userMessage = await insertUserMessage(conversation, parentId, createMessage(conversationId, "user", content));
+            userMessage = await insertUserMessage(conversation, parentId, createMessage(conversationId, "user", content, files));
         } else {
             throw new Error(`Can't edit the message because the id "${editedMessageId}" is not available`);
         }
@@ -275,10 +301,19 @@ export function extractThinking(content: string): { thinking: string | undefined
     return { thinking, answer };
 };
 
+export function getMessageContent(message: Message): string {
+    if (message.content.files.metadata.length !== 0)
+        return message.content.message + "\n\n\n" + message.content.files.content;
+    else
+        return message.content.message;
+}
+
+
 export function createMessage(
     conversationId: ConversationID,
     role: Role,
     content: string,
+    files: MessageFiles | undefined = undefined,
     id: MessageID | undefined = undefined,
     thinking: string | undefined = undefined,
     date: Date | undefined = undefined,
@@ -293,13 +328,24 @@ export function createMessage(
         messageDate = new Date();
     else
         messageDate = date;
-    return { id: messageId, role, thinking, content, date: messageDate, conversationId };
+    let messageContent: MessageContent;
+    if (files === undefined)
+        messageContent = { message: content, files: { metadata: [], content: "" } };
+    else
+        messageContent = { message: content, files };
+    return {
+        id: messageId,
+        role, thinking,
+        content: messageContent,
+        date: messageDate,
+        conversationId
+    };
 }
 
 
 function createUserMessage(
     conversationId: ConversationID,
-    content: string,
+    content: MessageContent,
     parentId: AssistantMessageID | undefined = undefined,
     isActive: boolean = false,
     id: UserMessageID | undefined = undefined,
@@ -307,7 +353,7 @@ function createUserMessage(
     answerMessageId: AssistantMessageID | undefined = undefined,
 ): UserMessage {
     return {
-        ...createMessage(conversationId, "user", content, id, undefined, date),
+        ...createMessage(conversationId, "user", content.message, content.files, id, undefined, date),
         role: "user",
         parentId: parentId,
         isActive: isActive,
@@ -318,13 +364,13 @@ function createUserMessage(
 function createAssistantMessage(
     conversationId: ConversationID,
     thinking: string | undefined,
-    content: string,
+    content: MessageContent,
     parentId: UserMessageID,
     id: AssistantMessageID | undefined = undefined,
     date: Date | undefined = undefined,
 ): AssistantMessage {
     return {
-        ...createMessage(conversationId, "assistant", content, id, thinking, date),
+        ...createMessage(conversationId, "assistant", content.message, content.files, id, thinking, date),
         role: "assistant",
         parentId,
         nextMessageIds: []

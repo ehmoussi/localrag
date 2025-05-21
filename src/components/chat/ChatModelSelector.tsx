@@ -1,7 +1,7 @@
 import React from "react";
 import { useModel } from "./use-model";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "../ui/select";
-import ollama from 'ollama';
+import ollama from 'ollama/browser';
 import { getOllamaLastModel, setOllamaLastModel } from "@/lib/storage";
 
 
